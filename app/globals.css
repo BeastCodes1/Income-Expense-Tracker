@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #f6f7fb;
+  color: #172033;
+  font-family: Arial, Helvetica, sans-serif;
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+.shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+.card { background: white; border: 1px solid #e7eaf0; border-radius: 18px; box-shadow: 0 4px 20px rgba(20,30,60,.035); }
+.muted { color: #788196; }
+.field { width: 100%; border: 1px solid #dfe4ec; border-radius: 10px; padding: 11px 12px; background: white; color: #172033; outline: none; }
+.field:focus { border-color: #5b67e8; box-shadow: 0 0 0 3px rgba(91,103,232,.12); }
+.btn { border: 0; border-radius: 10px; padding: 11px 15px; font-weight: 650; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn-primary { background: #4f46e5; color: white; }
+.btn-primary:disabled { opacity: .55; cursor: wait; }
+.btn-light { background: #f0f2f8; color: #26314a; }
+.btn-danger { background: #fff0f0; color: #b42318; }
+.label { display: block; font-size: 13px; font-weight: 650; margin-bottom: 7px; color: #4b5568; }
+
+/* Pocket Ledger theme variables */
+.dashboard-theme {
+  --ledger-bg: #f8fafc;
+  --ledger-card: #ffffff;
+  --ledger-text: #172033;
+  --ledger-muted: #64748b;
+  --ledger-border: #e2e8f0;
+  background: var(--ledger-bg);
+  color: var(--ledger-text);
+  border-radius: 1rem;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dashboard-theme .card {
+  background-color: var(--ledger-card);
+  color: var(--ledger-text);
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme .muted {
+  color: var(--ledger-muted);
+}
+
+.dashboard-theme .field {
+  background-color: var(--ledger-card);
+  color: var(--ledger-text);
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme.theme-dark {
+  --ledger-bg: #111827;
+  --ledger-card: #1f2937;
+  --ledger-text: #f3f4f6;
+  --ledger-muted: #a1aab9;
+  --ledger-border: #374151;
+}
+
+.dashboard-theme.theme-dark table th,
+.dashboard-theme.theme-dark table td {
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme.theme-dark .btn-light {
+  background-color: #374151;
+  color: #f3f4f6;
+  border-color: #4b5563;
+}
+
+.dashboard-theme.theme-dark input,
+.dashboard-theme.theme-dark select {
+  color-scheme: dark;
+}
+
+.dashboard-theme {
+  --ledger-bg: #f8fafc;
+  --ledger-card: #ffffff;
+  --ledger-text: #172033;
+  --ledger-muted: #64748b;
+  --ledger-border: #e2e8f0;
+  background: var(--ledger-bg);
+  color: var(--ledger-text);
+  border-radius: 1rem;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dashboard-theme .card {
+  background-color: var(--ledger-card);
+  color: var(--ledger-text);
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme .muted {
+  color: var(--ledger-muted);
+}
+
+.dashboard-theme .field {
+  background-color: var(--ledger-card);
+  color: var(--ledger-text);
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme.theme-dark {
+  --ledger-bg: #111827;
+  --ledger-card: #1f2937;
+  --ledger-text: #f3f4f6;
+  --ledger-muted: #a1aab9;
+  --ledger-border: #374151;
+}
+
+.dashboard-theme.theme-dark table th,
+.dashboard-theme.theme-dark table td {
+  border-color: var(--ledger-border);
+}
+
+.dashboard-theme.theme-dark .btn-light {
+  background-color: #374151;
+  color: #f3f4f6;
+  border-color: #4b5563;
+}
+
+.dashboard-theme.theme-dark input,
+.dashboard-theme.theme-dark select {
+  color-scheme: dark;
+}
+
+.dashboard-theme.theme-dark .text-slate-800,
+.dashboard-theme.theme-dark .text-slate-900,
+.dashboard-theme.theme-dark .text-slate-700 {
+  color: var(--ledger-text);
+}
+
+.dashboard-theme.theme-dark .bg-slate-100,
+.dashboard-theme.theme-dark .bg-slate-50 {
+  background-color: #374151;
+}
+/* Make the entire dashboard screen dark */
+html:has(.dashboard-theme.theme-dark),
+body:has(.dashboard-theme.theme-dark) {
+  background-color: #111827;
+}
+
+.dashboard-theme {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.dashboard-theme.theme-dark {
+  background-color: #111827 !important;
+  color: #f3f4f6;
+}
+
+/* Keep the dashboard cards dark too */
+.dashboard-theme.theme-dark .card {
+  background-color: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+
+/* Darken common page backgrounds */
+.dashboard-theme.theme-dark .bg-white,
+.dashboard-theme.theme-dark .bg-slate-50,
+.dashboard-theme.theme-dark .bg-slate-100 {
+  background-color: #1f2937;
+}

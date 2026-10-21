@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+.env
+.env.local
+.env.*.local
+.vercel
+*.tsbuildinfo
+
+# Protect environment variables and secrets
+.env*
+!.env.example
