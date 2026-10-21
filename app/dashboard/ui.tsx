@@ -28,8 +28,6 @@ import {
   X,
   CalendarDays,
   LoaderCircle,
-  Moon,
-  Sun,
   Repeat,
   PiggyBank,
   AlertTriangle,
@@ -37,6 +35,7 @@ import {
   TrendingUp,
   Sparkles,
 } from "lucide-react";
+import { useTheme } from "@/app/theme-provider";
 
 const CATEGORIES = {
   income: ["Salary", "Freelance", "Business", "Investment", "Gift", "Other"],
@@ -133,13 +132,14 @@ export function Dashboard({
   initialBudgets: Budget[];
 }) {
   const router = useRouter();
+  const { theme: activeTheme } = useTheme();
+  const dark = activeTheme === "dark";
 
   const [transactions, setTransactions] = useState(initialTransactions);
   const [recurring, setRecurring] = useState(initialRecurring);
   const [budgets, setBudgets] = useState(initialBudgets);
   const [month, setMonth] = useState(monthNow());
   const [query, setQuery] = useState("");
-  const [dark, setDark] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
@@ -151,16 +151,6 @@ export function Dashboard({
   useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
   useEffect(() => setRecurring(initialRecurring), [initialRecurring]);
   useEffect(() => setBudgets(initialBudgets), [initialBudgets]);
-
-  useEffect(() => {
-    setDark(localStorage.getItem("pocket-ledger-theme") === "dark");
-  }, []);
-
-  function toggleTheme() {
-    const next = !dark;
-    setDark(next);
-    localStorage.setItem("pocket-ledger-theme", next ? "dark" : "light");
-  }
 
   function refresh() {
     startRefresh(() => router.refresh());
@@ -287,10 +277,6 @@ setTransactions((old) => old.filter((t) => t.id !== id));
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className={secondaryButton} onClick={toggleTheme}>
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
-              {dark ? "Light mode" : "Dark mode"}
-            </button>
             <input
               aria-label="Choose month"
               className={`${field} w-auto`}
