@@ -120,6 +120,48 @@ html[data-theme="dark"] .landing-page [class*="border-slate-"] { border-color: v
 
 html[data-theme="dark"] .landing-page [class~="bg-slate-100"] { background-color: #374151; }
 
+/* Extend the dark palette to shared surfaces and common utility colors on every route. */
+html[data-theme="dark"] [class*="bg-white"],
+html[data-theme="dark"] [class~="bg-slate-50"],
+html[data-theme="dark"] [class~="bg-slate-100"] { background-color: var(--surface-raised); }
+
+html[data-theme="dark"] [class~="border-slate-100"],
+html[data-theme="dark"] [class~="border-slate-200"],
+html[data-theme="dark"] [class~="border-slate-300"] { border-color: var(--border); }
+
+html[data-theme="dark"] [class~="text-slate-900"],
+html[data-theme="dark"] [class~="text-slate-800"],
+html[data-theme="dark"] [class~="text-slate-700"] { color: var(--text); }
+
+html[data-theme="dark"] [class~="text-slate-600"],
+html[data-theme="dark"] [class~="text-slate-500"],
+html[data-theme="dark"] [class~="text-slate-400"] { color: var(--muted); }
+
+html[data-theme="dark"] [class~="bg-emerald-50"],
+html[data-theme="dark"] [class~="bg-emerald-100"] { background-color: rgb(6 78 59 / .42); }
+html[data-theme="dark"] [class~="text-emerald-800"] { color: #a7f3d0; }
+html[data-theme="dark"] [class~="text-emerald-700"] { color: #6ee7b7; }
+
+html[data-theme="dark"] [class~="bg-rose-50"],
+html[data-theme="dark"] [class~="bg-rose-100"] { background-color: rgb(136 19 55 / .38); }
+html[data-theme="dark"] [class~="text-rose-800"] { color: #fecdd3; }
+html[data-theme="dark"] [class~="text-rose-700"] { color: #fda4af; }
+
+html[data-theme="dark"] [class~="bg-indigo-50"],
+html[data-theme="dark"] [class~="bg-indigo-100"] { background-color: rgb(49 46 129 / .5); }
+html[data-theme="dark"] [class~="text-indigo-700"] { color: #c7d2fe; }
+
+html[data-theme="dark"] [class~="bg-violet-50"],
+html[data-theme="dark"] [class~="bg-violet-100"] { background-color: rgb(91 33 182 / .4); }
+html[data-theme="dark"] [class~="text-violet-700"] { color: #ddd6fe; }
+
+html[data-theme="dark"] [class~="bg-sky-50"],
+html[data-theme="dark"] [class~="bg-sky-100"] { background-color: rgb(7 89 133 / .4); }
+html[data-theme="dark"] [class~="text-sky-700"] { color: #bae6fd; }
+
+html[data-theme="dark"] [class~="bg-amber-50"] { background-color: rgb(120 53 15 / .42); }
+html[data-theme="dark"] [class~="text-amber-700"] { color: #fde68a; }
+
 /* The toggle stays available on every route without covering page content. */
 .theme-toggle-dock {
   position: fixed;
