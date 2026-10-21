@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import { ThemeProvider } from "@/app/theme-provider";
+import { ThemeToggle } from "@/app/theme-toggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,8 +13,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        {children}
-        <Analytics />
+        <ThemeProvider>
+          {children}
+          <ThemeToggle />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   );
