@@ -17,10 +17,10 @@ import type {
   RecurringTransaction,
   Budget,
 } from "@/app/dashboard/page";
-import type { ReactNode } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Wallet,
   Plus,
   Search,
   Pencil,
@@ -34,6 +34,8 @@ import {
   PiggyBank,
   AlertTriangle,
   CheckCircle2,
+  TrendingUp,
+  Sparkles,
 } from "lucide-react";
 
 const CATEGORIES = {
@@ -59,7 +61,10 @@ function monthNow() {
   return today().slice(0, 7);
 }
 
-function nextOccurrence(date: string, frequency: RecurringTransaction["frequency"]) {
+function nextOccurrence(
+  date: string,
+  frequency: RecurringTransaction["frequency"],
+) {
   const d = new Date(`${date}T12:00:00`);
   const originalDay = d.getDate();
 
@@ -73,9 +78,7 @@ function nextOccurrence(date: string, frequency: RecurringTransaction["frequency
     d.setDate(Math.min(originalDay, lastDay));
   }
 
-  if (frequency === "yearly") {
-    d.setFullYear(d.getFullYear() + 1);
-  }
+  if (frequency === "yearly") d.setFullYear(d.getFullYear() + 1);
 
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -108,13 +111,17 @@ function projectedRecurringTotal(
       }
 
       if (schedule.end_date && date >= schedule.end_date) break;
-
       date = nextOccurrence(date, schedule.frequency);
     }
   }
 
   return total;
 }
+
+const panel = "rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6";
+const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
+const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryButton = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
 
 export function Dashboard({
   initialTransactions,
@@ -128,30 +135,22 @@ export function Dashboard({
   const router = useRouter();
 
   const [transactions, setTransactions] = useState(initialTransactions);
-  const [recurringTransactions, setRecurringTransactions] = useState(initialRecurring);
+  const [recurring, setRecurring] = useState(initialRecurring);
   const [budgets, setBudgets] = useState(initialBudgets);
-  const [showBudgetForm, setShowBudgetForm] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
-  const [deletingBudgetId, setDeletingBudgetId] = useState<string | null>(null);
   const [month, setMonth] = useState(monthNow());
   const [query, setQuery] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [showRecurringForm, setShowRecurringForm] = useState(false);
-  const [editing, setEditing] = useState<Transaction | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleteRecurringId, setDeleteRecurringId] = useState<string | null>(null);
   const [dark, setDark] = useState(false);
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [showRecurringForm, setShowRecurringForm] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, startRefresh] = useTransition();
 
   useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
-
-  useEffect(() => {
-    setRecurringTransactions(initialRecurring);
-  }, [initialRecurring]);
-
-  useEffect(() => {
-    setBudgets(initialBudgets);
-  }, [initialBudgets]);
+  useEffect(() => setRecurring(initialRecurring), [initialRecurring]);
+  useEffect(() => setBudgets(initialBudgets), [initialBudgets]);
 
   useEffect(() => {
     setDark(localStorage.getItem("pocket-ledger-theme") === "dark");
@@ -161,6 +160,10 @@ export function Dashboard({
     const next = !dark;
     setDark(next);
     localStorage.setItem("pocket-ledger-theme", next ? "dark" : "light");
+  }
+
+  function refresh() {
+    startRefresh(() => router.refresh());
   }
 
   const visible = useMemo(
@@ -177,394 +180,606 @@ export function Dashboard({
 
   const income = visible
     .filter((t) => t.kind === "income")
-    .reduce((s, t) => s + Number(t.amount), 0);
+    .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const expenses = visible
     .filter((t) => t.kind === "expense")
-    .reduce((s, t) => s + Number(t.amount), 0);
+    .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const balance = income - expenses;
+  const projectedBalance = balance + projectedRecurringTotal(recurring, month);
 
-  const projectedBalance =
-    balance + projectedRecurringTotal(recurringTransactions, month);
-  const monthBudgets = budgets.filter((budget) => budget.month.slice(0, 7) === month);
-  const expenseByCategory = visible.reduce<Record<string, number>>((totals, transaction) => {
-    if (transaction.kind === "expense") {
-      totals[transaction.category] = (totals[transaction.category] ?? 0) + Number(transaction.amount);
+  const expensesByCategory = visible.reduce<Record<string, number>>((totals, t) => {
+    if (t.kind === "expense") {
+      totals[t.category] = (totals[t.category] ?? 0) + Number(t.amount);
     }
     return totals;
   }, {});
-  const totalBudget = monthBudgets.reduce((sum, budget) => sum + Number(budget.amount), 0);
-  const budgetedSpend = monthBudgets.reduce((sum, budget) => sum + (expenseByCategory[budget.category] ?? 0), 0);
 
-  function refresh() {
-    startRefresh(() => router.refresh());
-  }
+  const monthBudgets = budgets.filter((b) => b.month.slice(0, 7) === month);
+  const totalBudget = monthBudgets.reduce((sum, b) => sum + Number(b.amount), 0);
+  const budgetedSpend = monthBudgets.reduce(
+    (sum, b) => sum + (expensesByCategory[b.category] ?? 0),
+    0,
+  );
+
+  const topCategories = Object.entries(expensesByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const monthLabel = new Date(`${month}-15T12:00:00`).toLocaleDateString(
+    "en-CA",
+    { month: "long", year: "numeric" },
+  );
 
   async function removeTransaction(id: string) {
-    setDeleteId(id);
+    if (!window.confirm("Delete this transaction? This cannot be undone.")) return;
+    setBusyId(id);
     const fd = new FormData();
     fd.set("id", id);
+    const result = await deleteTransaction(fd);
 
-    await deleteTransaction(fd);
-    setTransactions((old) => old.filter((t) => t.id !== id));
-    refresh();
-    setDeleteId(null);
+await deleteTransaction(fd);
+
+setTransactions((old) => old.filter((t) => t.id !== id));
+    setBusyId(null);
   }
 
   async function removeRecurring(id: string) {
     if (!window.confirm("Delete this recurring schedule?")) return;
-
-    setDeleteRecurringId(id);
+    setBusyId(id);
     const fd = new FormData();
     fd.set("id", id);
-
     const result = await deleteRecurringTransaction(fd);
 
     if (result?.error) {
       window.alert(result.error);
     } else {
-      setRecurringTransactions((old) => old.filter((t) => t.id !== id));
+      setRecurring((old) => old.filter((t) => t.id !== id));
       refresh();
     }
-
-    setDeleteRecurringId(null);
+    setBusyId(null);
   }
 
+  async function removeBudget(budget: Budget) {
+    if (!window.confirm(`Delete the ${budget.category} budget?`)) return;
+    setBusyId(budget.id);
+    const fd = new FormData();
+    fd.set("id", budget.id);
+    const result = await deleteBudget(fd);
+
+    if (result?.error) {
+      window.alert(result.error);
+    } else {
+      setBudgets((old) => old.filter((b) => b.id !== budget.id));
+      refresh();
+    }
+    setBusyId(null);
+  }
+
+  const theme = dark
+    ? "bg-slate-950 text-slate-100 [--muted:#a1a1aa] [--panel:#111827] [--line:#293548]"
+    : "bg-slate-50 text-slate-900 [--muted:#64748b] [--panel:#ffffff] [--line:#e2e8f0]";
+
+  const panelClass = dark
+    ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-sm sm:p-6"
+    : panel;
+
+  const textMuted = dark ? "text-slate-400" : "text-slate-500";
+  const tableRow = dark
+    ? "border-b border-slate-800 last:border-0"
+    : "border-b border-slate-100 last:border-0";
+
   return (
-    <div className={`dashboard-theme ${dark ? "theme-dark" : "theme-light"} p-4 md:p-6`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Overview</h1>
-          <p className="muted mt-1">A clear picture of your money.</p>
-        </div>
+    <div className={`dashboard-theme ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
+      <div className="mx-auto max-w-7xl space-y-7">
 
-        <div className="flex flex-wrap gap-2 items-center">
-          <button className="btn btn-light" onClick={toggleTheme}>
-            {dark ? <Sun size={17} /> : <Moon size={17} />}
-            {dark ? "Light mode" : "Dark mode"}
-          </button>
-
-          <label className="sr-only" htmlFor="month">Month</label>
-          <input
-            id="month"
-            aria-label="Filter by month"
-            className="field"
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            style={{ width: 165 }}
-          />
-
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-          >
-            <Plus size={18} /> Add transaction
-          </button>
-        </div>
-      </div>
-
-      <section className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <Summary title="Income" amount={income} icon={<ArrowDownLeft size={20} />} tone="green" />
-        <Summary title="Expenses" amount={expenses} icon={<ArrowUpRight size={20} />} tone="rose" />
-        <Summary title="Net balance" amount={balance} icon={<WalletIcon />} tone="indigo" />
-        <Summary title="Projected balance" amount={projectedBalance} icon={<Repeat size={20} />} tone="indigo" />
-      </section>
-
-      <section className="card p-4 md:p-6 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-indigo-50 text-indigo-700 p-3"><PiggyBank size={22} /></div>
-            <div>
-              <h2 className="text-lg font-bold">Monthly budgets</h2>
-              <p className="muted text-sm mt-1">Keep spending on track for {new Date(`${month}-15T12:00:00`).toLocaleDateString("en-CA", { month: "long", year: "numeric" })}.</p>
+        {/* Dashboard heading */}
+        <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-indigo-100 px-3 py-1.5 text-xs font-bold text-indigo-700">
+              <Sparkles size={14} /> YOUR MONEY, MADE CLEARER
             </div>
-          </div>
-          <button className="btn btn-primary" onClick={() => { setEditingBudget(null); setShowBudgetForm((current) => !current); }}>
-            {showBudgetForm ? <X size={17} /> : <Plus size={17} />}
-            {showBudgetForm ? "Cancel" : "Set a budget"}
-          </button>
-        </div>
-
-        {showBudgetForm && (
-          <BudgetForm
-            key={editingBudget?.id ?? "new-budget"}
-            month={month}
-            budget={editingBudget}
-            onCancel={() => { setShowBudgetForm(false); setEditingBudget(null); }}
-            onSaved={() => { setShowBudgetForm(false); setEditingBudget(null); refresh(); }}
-          />
-        )}
-
-        {monthBudgets.length > 0 && (
-          <div className="grid sm:grid-cols-3 gap-3 mb-5">
-            <div className="rounded-xl bg-slate-50 p-4"><p className="muted text-xs">Planned spending</p><p className="text-xl font-bold mt-1">{money(totalBudget)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-4"><p className="muted text-xs">Spent in budgeted categories</p><p className="text-xl font-bold mt-1">{money(budgetedSpend)}</p></div>
-            <div className="rounded-xl bg-slate-50 p-4"><p className="muted text-xs">Budget remaining</p><p className={`text-xl font-bold mt-1 ${budgetedSpend > totalBudget ? "text-rose-600" : "text-emerald-600"}`}>{money(totalBudget - budgetedSpend)}</p></div>
-          </div>
-        )}
-
-        {monthBudgets.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 px-5 py-8 text-center">
-            <PiggyBank className="mx-auto muted" size={28} />
-            <p className="font-semibold mt-3">Give your money a plan</p>
-            <p className="muted text-sm mt-1">Set a monthly limit for categories like food, shopping, or transport. We’ll track your recorded spending against it.</p>
-            {!showBudgetForm && <button className="btn btn-light mt-4" onClick={() => { setEditingBudget(null); setShowBudgetForm(true); }}>Create your first budget</button>}
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-4">
-            {monthBudgets.map((budget) => {
-              const spent = expenseByCategory[budget.category] ?? 0;
-              const percent = budget.amount > 0 ? (spent / Number(budget.amount)) * 100 : 0;
-              const over = percent >= 100;
-              const near = percent >= 80 && !over;
-              return (
-                <div key={budget.id} className="rounded-xl border border-slate-200 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{budget.category}</p>
-                      <p className="muted text-sm mt-1">{money(spent)} spent of {money(Number(budget.amount))}</p>
-                    </div>
-                    <div className="flex gap-1">
-                      <button className="btn btn-light !p-2 text-xs" onClick={() => { setEditingBudget(budget); setShowBudgetForm(true); }} aria-label={`Edit ${budget.category} budget`}> <Pencil size={14} /> </button>
-                      <button className="btn btn-danger !p-2" disabled={deletingBudgetId === budget.id} onClick={() => void (async () => {
-                        if (!window.confirm(`Delete the ${budget.category} budget for ${month}?`)) return;
-                        setDeletingBudgetId(budget.id);
-                        const formData = new FormData(); formData.set("id", budget.id);
-                        const result = await deleteBudget(formData);
-                        if (result.error) window.alert(result.error);
-                        else { setBudgets((current) => current.filter((item) => item.id !== budget.id)); refresh(); }
-                        setDeletingBudgetId(null);
-                      })()} aria-label={`Delete ${budget.category} budget`}>
-                        {deletingBudgetId === budget.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden mt-4" role="progressbar" aria-valuenow={Math.round(Math.min(percent, 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`${budget.category} budget used`}>
-                    <div className={`h-full rounded-full transition-all ${over ? "bg-rose-500" : near ? "bg-amber-400" : "bg-indigo-500"}`} style={{ width: `${Math.min(percent, 100)}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 mt-2 text-sm">
-                    <span className="muted">{Math.round(percent)}% used</span>
-                    <span className="font-semibold">{money(Number(budget.amount) - spent)} left</span>
-                  </div>
-                  {over ? <p className="text-rose-600 text-sm flex items-center gap-2 mt-3"><AlertTriangle size={15} /> Over budget by {money(spent - Number(budget.amount))}.</p> : near ? <p className="text-amber-700 text-sm flex items-center gap-2 mt-3"><AlertTriangle size={15} /> You’ve used at least 80% of this budget.</p> : <p className="text-emerald-700 text-sm flex items-center gap-2 mt-3"><CheckCircle2 size={15} /> You’re within this budget.</p>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="card p-4 md:p-6 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div>
-            <h2 className="text-lg font-bold">Recurring income & expenses</h2>
-            <p className="muted text-sm mt-1">
-              {recurringTransactions.length} schedule{recurringTransactions.length === 1 ? "" : "s"} saved
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Overview</h1>
+            <p className={`mt-2 ${textMuted}`}>
+              Here’s your financial picture for {monthLabel}.
             </p>
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowRecurringForm((v) => !v)}
-          >
-            {showRecurringForm ? <X size={17} /> : <Plus size={17} />}
-            {showRecurringForm ? "Cancel" : "Add recurring"}
-          </button>
-        </div>
-
-        {showRecurringForm && (
-          <RecurringForm
-            onCancel={() => setShowRecurringForm(false)}
-            onSaved={() => {
-              setShowRecurringForm(false);
-              refresh();
-            }}
-          />
-        )}
-
-        {recurringTransactions.length === 0 ? (
-          <p className="muted text-sm py-6 text-center">
-            No recurring schedules yet. Add recurring rent, bills, salary, or other regular income.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[650px]">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-500">
-                  <th className="py-3 pr-3">Schedule</th>
-                  <th className="py-3 pr-3">Frequency</th>
-                  <th className="py-3 pr-3">Next due</th>
-                  <th className="py-3 pr-3 text-right">Amount</th>
-                  <th className="py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recurringTransactions.map((t) => (
-                  <tr key={t.id} className="border-b border-slate-50 last:border-0">
-                    <td className="py-4 pr-3">
-                      <div className="font-semibold">{t.description || t.category}</div>
-                      <div className="muted text-xs mt-1">
-                        {t.kind} · {t.category}
-                      </div>
-                    </td>
-                    <td className="py-4 pr-3 capitalize">{t.frequency}</td>
-                    <td className="py-4 pr-3 muted">{t.next_due_date}</td>
-                    <td className={`py-4 pr-3 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-600" : ""}`}>
-                      {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
-                    </td>
-                    <td className="py-4 text-right">
-                      <button
-                        className="btn btn-danger !p-2"
-                        title="Delete recurring schedule"
-                        aria-label="Delete recurring schedule"
-                        disabled={deleteRecurringId === t.id}
-                        onClick={() => void removeRecurring(t.id)}
-                      >
-                        {deleteRecurringId === t.id
-                          ? <LoaderCircle size={15} className="animate-spin" />
-                          : <Trash2 size={15} />}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <p className="muted text-xs mt-4">
-          Projected balance adds future scheduled amounts due in the selected month to your recorded net balance.
-          Schedules are projections; they do not automatically create posted transactions.
-        </p>
-      </section>
-
-      <section className="card p-4 md:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div>
-            <h2 className="text-lg font-bold">Transactions</h2>
-            <p className="muted text-sm mt-1">
-              {visible.length} record{visible.length === 1 ? "" : "s"} in {month}
-            </p>
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-3 muted" size={17} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={secondaryButton} onClick={toggleTheme}>
+              {dark ? <Sun size={17} /> : <Moon size={17} />}
+              {dark ? "Light mode" : "Dark mode"}
+            </button>
             <input
-              className="field pl-9"
-              placeholder="Search transactions…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Choose month"
+              className={`${field} w-auto`}
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
             />
-          </div>
-        </div>
-
-        {visible.length === 0 ? (
-          <div className="py-12 text-center">
-            <div className="mx-auto rounded-2xl bg-slate-100 p-4 w-fit">
-              <CalendarDays size={25} />
-            </div>
-            <h3 className="font-bold mt-4">No transactions found</h3>
-            <p className="muted text-sm mt-2">
-              Add your first transaction or change the month filter.
-            </p>
             <button
-              className="btn btn-primary mt-4"
+              type="button"
+              className={primaryButton}
               onClick={() => {
                 setEditing(null);
-                setShowForm(true);
+                setShowTransactionForm(true);
               }}
             >
               <Plus size={17} /> Add transaction
             </button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left min-w-[650px]">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-500">
-                  <th className="font-semibold py-3 pr-3">Transaction</th>
-                  <th className="font-semibold py-3 pr-3">Category</th>
-                  <th className="font-semibold py-3 pr-3">Date</th>
-                  <th className="font-semibold py-3 pr-3 text-right">Amount</th>
-                  <th className="font-semibold py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((t) => (
-                  <tr key={t.id} className="border-b border-slate-50 last:border-0">
-                    <td className="py-4 pr-3">
-                      <div className="font-semibold">{t.description || t.category}</div>
-                      <div className="muted text-xs mt-1 capitalize">{t.kind}</div>
-                    </td>
-                    <td className="py-4 pr-3">
-                      <span className="rounded-full bg-slate-100 px-3 py-1">{t.category}</span>
-                    </td>
-                    <td className="py-4 pr-3 muted">
-                      {new Date(`${t.transaction_date}T12:00:00`).toLocaleDateString("en-CA", {
-                        year: "numeric", month: "short", day: "numeric",
-                      })}
-                    </td>
-                    <td className={`py-4 pr-3 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-600" : "text-slate-800"}`}>
-                      {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
-                    </td>
-                    <td className="py-4 text-right whitespace-nowrap">
-                      <button
-                        aria-label="Edit transaction"
-                        title="Edit"
-                        className="btn btn-light !p-2 mr-2"
-                        onClick={() => {
-                          setEditing(t);
-                          setShowForm(true);
-                        }}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        aria-label="Delete transaction"
-                        title="Delete"
-                        disabled={deleteId === t.id}
-                        className="btn btn-danger !p-2"
-                        onClick={() => {
-                          if (window.confirm("Delete this transaction? This cannot be undone.")) {
-                            void removeTransaction(t.id);
-                          }
-                        }}
-                      >
-                        {deleteId === t.id
-                          ? <LoaderCircle size={15} className="animate-spin" />
-                          : <Trash2 size={15} />}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+        </header>
 
-      {showForm && (
-        <TransactionModal
+        {/* Summary cards */}
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard title="Income" amount={income} icon={<ArrowDownLeft size={21} />} tone="green" dark={dark} />
+          <SummaryCard title="Expenses" amount={expenses} icon={<ArrowUpRight size={21} />} tone="rose" dark={dark} />
+          <SummaryCard title="Net balance" amount={balance} icon={<Wallet size={21} />} tone="indigo" dark={dark} />
+          <SummaryCard title="Projected balance" amount={projectedBalance} icon={<TrendingUp size={21} />} tone="violet" dark={dark} />
+        </section>
+
+        {/* Spending insights */}
+        <section className={panelClass}>
+          <div className="mb-5 flex items-start gap-3">
+            <span className="rounded-2xl bg-indigo-100 p-3 text-indigo-700">
+              <TrendingUp size={22} />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold">Spending insights</h2>
+              <p className={`mt-1 text-sm ${textMuted}`}>
+                Where your recorded money went this month.
+              </p>
+            </div>
+          </div>
+
+          {topCategories.length === 0 ? (
+            <p className={`${textMuted} rounded-2xl border border-dashed p-6 text-center text-sm`}>
+              Add an expense to see your spending breakdown.
+            </p>
+          ) : (
+            <div className="space-y-5">
+              {topCategories.map(([category, amount]) => {
+                const percent = expenses > 0 ? (amount / expenses) * 100 : 0;
+                return (
+                  <div key={category}>
+                    <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="font-semibold">{category}</span>
+                      <span className={textMuted}>
+                        {money(amount)} · {Math.round(percent)}%
+                      </span>
+                    </div>
+                    <div className={`h-2.5 overflow-hidden rounded-full ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
+                        style={{ width: `${Math.min(percent, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Budgets */}
+        <section className={panelClass}>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
+                <PiggyBank size={22} />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold">Monthly budgets</h2>
+                <p className={`mt-1 text-sm ${textMuted}`}>Plan ahead and keep spending on track.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={primaryButton}
+              onClick={() => {
+                setEditingBudget(null);
+                setShowBudgetForm((v) => !v);
+              }}
+            >
+              {showBudgetForm ? <X size={17} /> : <Plus size={17} />}
+              {showBudgetForm ? "Cancel" : "Set a budget"}
+            </button>
+          </div>
+
+          {showBudgetForm && (
+            <BudgetForm
+              key={editingBudget?.id ?? "new-budget"}
+              month={month}
+              budget={editingBudget}
+              dark={dark}
+              onCancel={() => {
+                setShowBudgetForm(false);
+                setEditingBudget(null);
+              }}
+              onSaved={() => {
+                setShowBudgetForm(false);
+                setEditingBudget(null);
+                refresh();
+              }}
+            />
+          )}
+
+          {monthBudgets.length > 0 && (
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <MiniStat label="Total budget" value={money(totalBudget)} dark={dark} />
+              <MiniStat label="Spent in budgeted categories" value={money(budgetedSpend)} dark={dark} />
+              <MiniStat
+                label="Budget remaining"
+                value={money(totalBudget - budgetedSpend)}
+                dark={dark}
+                valueClass={budgetedSpend > totalBudget ? "text-rose-500" : "text-emerald-500"}
+              />
+            </div>
+          )}
+
+          {monthBudgets.length === 0 ? (
+            <div className={`rounded-2xl border border-dashed p-8 text-center ${dark ? "border-slate-700" : "border-slate-200"}`}>
+              <PiggyBank size={30} className="mx-auto text-indigo-400" />
+              <p className="mt-3 font-bold">Give your money a plan</p>
+              <p className={`mx-auto mt-2 max-w-md text-sm ${textMuted}`}>
+                Create category limits for food, housing, transport, and more. Your recorded expenses will be compared with each limit.
+              </p>
+              <button
+                type="button"
+                className={`${secondaryButton} mt-4`}
+                onClick={() => setShowBudgetForm(true)}
+              >
+                <Plus size={16} /> Create your first budget
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {monthBudgets.map((budget) => {
+                const spent = expensesByCategory[budget.category] ?? 0;
+                const limit = Number(budget.amount);
+                const percent = limit > 0 ? (spent / limit) * 100 : 0;
+                const over = percent >= 100;
+                const near = percent >= 80 && !over;
+
+                return (
+                  <div key={budget.id} className={`rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold">{budget.category}</p>
+                        <p className={`mt-1 text-sm ${textMuted}`}>
+                          {money(spent)} of {money(limit)}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          aria-label={`Edit ${budget.category} budget`}
+                          onClick={() => {
+                            setEditingBudget(budget);
+                            setShowBudgetForm(true);
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          aria-label={`Delete ${budget.category} budget`}
+                          disabled={busyId === budget.id}
+                          onClick={() => void removeBudget(budget)}
+                        >
+                          {busyId === budget.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`mt-4 h-2.5 overflow-hidden rounded-full ${dark ? "bg-slate-800" : "bg-slate-100"}`}
+                      role="progressbar"
+                      aria-valuenow={Math.round(Math.min(percent, 100))}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${budget.category} budget used`}
+                    >
+                      <div
+                        className={`h-full rounded-full transition-all ${over ? "bg-rose-500" : near ? "bg-amber-400" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(percent, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                      <span className={textMuted}>{Math.round(percent)}% used</span>
+                      <span className="font-semibold">{money(limit - spent)} left</span>
+                    </div>
+
+                    <p className={`mt-3 flex items-center gap-2 text-sm ${over ? "text-rose-500" : near ? "text-amber-500" : "text-emerald-500"}`}>
+                      {over ? <AlertTriangle size={15} /> : near ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
+                      {over
+                        ? `Over budget by ${money(spent - limit)}`
+                        : near
+                          ? "You've used at least 80% of this budget"
+                          : "You're within this budget"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Recurring transactions */}
+        <section className={panelClass}>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="rounded-2xl bg-violet-100 p-3 text-violet-700">
+                <Repeat size={22} />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold">Recurring transactions</h2>
+                <p className={`mt-1 text-sm ${textMuted}`}>
+                  {recurring.length} saved schedule{recurring.length === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={primaryButton}
+              onClick={() => setShowRecurringForm((v) => !v)}
+            >
+              {showRecurringForm ? <X size={17} /> : <Plus size={17} />}
+              {showRecurringForm ? "Cancel" : "Add recurring"}
+            </button>
+          </div>
+
+          {showRecurringForm && (
+            <RecurringForm
+              dark={dark}
+              onCancel={() => setShowRecurringForm(false)}
+              onSaved={() => {
+                setShowRecurringForm(false);
+                refresh();
+              }}
+            />
+          )}
+
+          {recurring.length === 0 ? (
+            <p className={`py-6 text-center text-sm ${textMuted}`}>
+              Add regular salary payments, rent, bills, or other recurring income and expenses.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-left text-sm">
+                <thead>
+                  <tr className={textMuted}>
+                    <th className="pb-3 pr-4 font-medium">Schedule</th>
+                    <th className="pb-3 pr-4 font-medium">Frequency</th>
+                    <th className="pb-3 pr-4 font-medium">Next due</th>
+                    <th className="pb-3 pr-4 text-right font-medium">Amount</th>
+                    <th className="pb-3 text-right font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recurring.map((t) => (
+                    <tr key={t.id} className={tableRow}>
+                      <td className="py-4 pr-4">
+                        <p className="font-semibold">{t.description || t.category}</p>
+                        <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind} · {t.category}</p>
+                      </td>
+                      <td className="py-4 pr-4 capitalize">{t.frequency}</td>
+                      <td className={`py-4 pr-4 ${textMuted}`}>{t.next_due_date}</td>
+                      <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                        {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
+                      </td>
+                      <td className="py-4 text-right">
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          aria-label="Delete recurring schedule"
+                          disabled={busyId === t.id}
+                          onClick={() => void removeRecurring(t.id)}
+                        >
+                          {busyId === t.id ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className={`mt-4 text-xs ${textMuted}`}>
+            Projected balance includes scheduled amounts due from today through the selected month. Recurring schedules are projections and do not automatically create posted transactions.
+          </p>
+        </section>
+
+        {/* Transaction history */}
+        <section className={panelClass}>
+          <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-lg font-bold">Transactions</h2>
+              <p className={`mt-1 text-sm ${textMuted}`}>
+                {visible.length} record{visible.length === 1 ? "" : "s"} · {monthLabel}
+              </p>
+            </div>
+            <div className="relative w-full sm:max-w-xs">
+              <Search size={17} className={`absolute left-3 top-3 ${textMuted}`} />
+              <input
+                className={`${field} pl-9`}
+                placeholder="Search transactions..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="py-12 text-center">
+              <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <CalendarDays size={25} />
+              </span>
+              <h3 className="mt-4 font-bold">No transactions found</h3>
+              <p className={`mt-2 text-sm ${textMuted}`}>
+                Try another month or search term, or add a transaction.
+              </p>
+              <button
+                type="button"
+                className={`${primaryButton} mt-4`}
+                onClick={() => {
+                  setEditing(null);
+                  setShowTransactionForm(true);
+                }}
+              >
+                <Plus size={17} /> Add transaction
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[650px] text-left text-sm">
+                <thead>
+                  <tr className={textMuted}>
+                    <th className="pb-3 pr-4 font-medium">Transaction</th>
+                    <th className="pb-3 pr-4 font-medium">Category</th>
+                    <th className="pb-3 pr-4 font-medium">Date</th>
+                    <th className="pb-3 pr-4 text-right font-medium">Amount</th>
+                    <th className="pb-3 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((t) => (
+                    <tr key={t.id} className={tableRow}>
+                      <td className="py-4 pr-4">
+                        <div className="flex items-center gap-3">
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                            {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
+                          </span>
+                          <div>
+                            <p className="font-semibold">{t.description || t.category}</p>
+                            <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 pr-4">
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
+                          {t.category}
+                        </span>
+                      </td>
+                      <td className={`py-4 pr-4 whitespace-nowrap ${textMuted}`}>
+                        {new Date(`${t.transaction_date}T12:00:00`).toLocaleDateString("en-CA", {
+                          year: "numeric", month: "short", day: "numeric",
+                        })}
+                      </td>
+                      <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                        {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
+                      </td>
+                      <td className="py-4 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          className={`${secondaryButton} mr-2`}
+                          aria-label="Edit transaction"
+                          onClick={() => {
+                            setEditing(t);
+                            setShowTransactionForm(true);
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          aria-label="Delete transaction"
+                          disabled={busyId === t.id}
+                          onClick={() => void removeTransaction(t.id)}
+                        >
+                          {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <footer className={`flex flex-wrap items-center justify-between gap-3 px-1 text-xs ${textMuted}`}>
+          <span>Made for clearer money decisions.</span>
+          <span>{refreshing ? "Refreshing saved data..." : "Your dashboard uses your saved records."}</span>
+        </footer>
+      </div>
+
+      {showTransactionForm && (
+        <TransactionForm
+          key={editing?.id ?? "new-transaction"}
           transaction={editing}
-          onClose={() => setShowForm(false)}
+          dark={dark}
+          onClose={() => setShowTransactionForm(false)}
           onSaved={(updated) => {
             setTransactions((old) =>
               updated.id.startsWith("local-")
                 ? [updated, ...old]
                 : old.map((t) => t.id === updated.id ? updated : t),
             );
-            setShowForm(false);
+            setShowTransactionForm(false);
             refresh();
           }}
         />
       )}
+    </div>
+  );
+}
 
-      {refreshing && <p className="text-xs muted mt-3">Refreshing saved data…</p>}
+function SummaryCard({
+  title,
+  amount,
+  icon,
+  tone,
+  dark,
+}: {
+  title: string;
+  amount: number;
+  icon: React.ReactNode;
+  tone: "green" | "rose" | "indigo" | "violet";
+  dark: boolean;
+}) {
+  const colors = {
+    green: "bg-emerald-100 text-emerald-700",
+    rose: "bg-rose-100 text-rose-700",
+    indigo: "bg-indigo-100 text-indigo-700",
+    violet: "bg-violet-100 text-violet-700",
+  };
+
+  return (
+    <div className={`rounded-3xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200/80 bg-white"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`text-sm font-medium ${dark ? "text-slate-400" : "text-slate-500"}`}>{title}</p>
+        <span className={`rounded-2xl p-3 ${colors[tone]}`}>{icon}</span>
+      </div>
+      <p className={`mt-5 break-words text-2xl font-black tracking-tight sm:text-3xl ${amount < 0 ? "text-rose-500" : ""}`}>
+        {money(amount)}
+      </p>
+      <p className={`mt-2 text-xs ${dark ? "text-slate-500" : "text-slate-400"}`}>Selected month · CAD</p>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  dark,
+  valueClass = "",
+}: {
+  label: string;
+  value: string;
+  dark: boolean;
+  valueClass?: string;
+}) {
+  return (
+    <div className={`rounded-2xl p-4 ${dark ? "bg-slate-800" : "bg-slate-50"}`}>
+      <p className={`text-xs ${dark ? "text-slate-400" : "text-slate-500"}`}>{label}</p>
+      <p className={`mt-2 break-words text-xl font-bold ${valueClass}`}>{value}</p>
     </div>
   );
 }
@@ -572,11 +787,13 @@ export function Dashboard({
 function BudgetForm({
   month,
   budget,
+  dark,
   onCancel,
   onSaved,
 }: {
   month: string;
   budget: Budget | null;
+  dark: boolean;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -587,44 +804,70 @@ function BudgetForm({
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const formData = new FormData(event.currentTarget);
+    const fd = new FormData(event.currentTarget);
+
     startTransition(async () => {
-      const result = await saveBudget(formData);
-      if (result.error) { setError(result.error); return; }
+      const result = await saveBudget(fd);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
       onSaved();
     });
   }
 
   return (
-    <form onSubmit={submit} className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 mb-5 space-y-4">
+    <form onSubmit={submit} className={`mb-5 space-y-4 rounded-2xl border p-4 ${dark ? "border-slate-700 bg-slate-800" : "border-indigo-100 bg-indigo-50/50"}`}>
       <input type="hidden" name="month" value={month} />
       {budget && <input type="hidden" name="category" value={category} />}
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="budget-category">Expense category</label>
-          <select className="field" id="budget-category" name={budget ? undefined : "category"} value={category} disabled={Boolean(budget)} onChange={(event) => setCategory(event.target.value)}>
-            {CATEGORIES.expense.map((item) => <option key={item} value={item}>{item}</option>)}
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="budget-category">Category</label>
+          <select
+            className={field}
+            id="budget-category"
+            name={budget ? undefined : "category"}
+            value={category}
+            disabled={Boolean(budget)}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            {CATEGORIES.expense.map((c) => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="budget-amount">Monthly limit (CAD)</label>
-          <input className="field" id="budget-amount" name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" defaultValue={budget ? Number(budget.amount).toFixed(2) : ""} placeholder="e.g. 450.00" required />
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="budget-amount">Monthly limit (CAD)</label>
+          <input
+            className={field}
+            id="budget-amount"
+            name="amount"
+            type="number"
+            min="0.01"
+            max="9999999999.99"
+            step="0.01"
+            defaultValue={budget ? Number(budget.amount).toFixed(2) : ""}
+            placeholder="e.g. 450.00"
+            required
+          />
         </div>
       </div>
-      <p className="muted text-xs">Budget month follows the month selected at the top of your dashboard. Saving this category again updates its budget.</p>
-      {error && <p role="alert" className="rounded-lg bg-rose-50 text-rose-700 p-3 text-sm">{error}</p>}
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" className="btn btn-light" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{pending ? "Saving…" : budget ? "Update budget" : "Save budget"}</button>
+      {error && <p role="alert" className="rounded-xl bg-rose-100 p-3 text-sm text-rose-700">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" className={secondaryButton} onClick={onCancel}>Cancel</button>
+        <button type="submit" className={primaryButton} disabled={pending}>
+          {pending && <LoaderCircle size={16} className="animate-spin" />}
+          {pending ? "Saving..." : budget ? "Update budget" : "Save budget"}
+        </button>
       </div>
     </form>
   );
 }
 
 function RecurringForm({
+  dark,
   onCancel,
   onSaved,
 }: {
+  dark: boolean;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -636,10 +879,10 @@ function RecurringForm({
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    const formData = new FormData(event.currentTarget);
+    const fd = new FormData(event.currentTarget);
 
     startTransition(async () => {
-      const result: ActionState = await saveRecurringTransaction(formData);
+      const result: ActionState = await saveRecurringTransaction(fd);
       if (result?.error) {
         setError(result.error);
         return;
@@ -649,147 +892,72 @@ function RecurringForm({
   }
 
   return (
-    <form onSubmit={submit} className="border border-slate-200 rounded-xl p-4 mb-5 space-y-4">
-      <h3 className="font-semibold">New recurring schedule</h3>
-
-      <div className="grid sm:grid-cols-2 gap-4">
+    <form onSubmit={submit} className={`mb-5 space-y-4 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}>
+      <h3 className="font-bold">New recurring schedule</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="recurring-kind">Type</label>
-          <select
-            className="field"
-            id="recurring-kind"
-            name="kind"
-            value={kind}
-            onChange={(e) => {
-              const next = e.target.value as "income" | "expense";
-              setKind(next);
-              setCategory(next === "income" ? "Salary" : "Housing");
-            }}
-          >
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-kind">Type</label>
+          <select className={field} id="recurring-kind" name="kind" value={kind} onChange={(e) => {
+            const next = e.target.value as "income" | "expense";
+            setKind(next);
+            setCategory(next === "income" ? "Salary" : "Housing");
+          }}>
             <option value="expense">Expense</option>
             <option value="income">Income</option>
           </select>
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-amount">Amount (CAD)</label>
-          <input
-            className="field"
-            id="recurring-amount"
-            name="amount"
-            type="number"
-            min="0.01"
-            max="9999999999.99"
-            step="0.01"
-            placeholder="0.00"
-            required
-          />
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-amount">Amount (CAD)</label>
+          <input className={field} id="recurring-amount" name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" placeholder="0.00" required />
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-category">Category</label>
-          <select
-            className="field"
-            id="recurring-category"
-            name="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            {CATEGORIES[kind].map((c) => <option key={c} value={c}>{c}</option>)}
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-category">Category</label>
+          <select className={field} id="recurring-category" name="category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORIES[kind].map((c) => <option key={c}>{c}</option>)}
           </select>
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-frequency">Frequency</label>
-          <select className="field" id="recurring-frequency" name="frequency" defaultValue="monthly">
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-frequency">Frequency</label>
+          <select className={field} id="recurring-frequency" name="frequency" defaultValue="monthly">
             <option value="weekly">Weekly</option>
             <option value="biweekly">Every two weeks</option>
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-description">Description</label>
-          <input
-            className="field"
-            id="recurring-description"
-            name="description"
-            maxLength={240}
-            placeholder="e.g. Monthly rent"
-          />
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-description">Description</label>
+          <input className={field} id="recurring-description" name="description" maxLength={240} placeholder="e.g. Monthly rent" />
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-start">First due date</label>
-          <input
-            className="field"
-            id="recurring-start"
-            name="start_date"
-            type="date"
-            defaultValue={today()}
-            required
-          />
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-start">First due date</label>
+          <input className={field} id="recurring-start" name="start_date" type="date" defaultValue={today()} required />
         </div>
-
         <div>
-          <label className="label" htmlFor="recurring-end">End date (optional)</label>
-          <input className="field" id="recurring-end" name="end_date" type="date" />
+          <label className="mb-1.5 block text-sm font-semibold" htmlFor="recurring-end">End date (optional)</label>
+          <input className={field} id="recurring-end" name="end_date" type="date" />
         </div>
       </div>
-
-      {error && <p role="alert" className="rounded-lg bg-rose-50 text-rose-700 p-3 text-sm">{error}</p>}
-
-      <div className="flex gap-3">
-        <button type="button" className="btn btn-light" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={pending}>
+      {error && <p role="alert" className="rounded-xl bg-rose-100 p-3 text-sm text-rose-700">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" className={secondaryButton} onClick={onCancel}>Cancel</button>
+        <button type="submit" className={primaryButton} disabled={pending}>
           {pending && <LoaderCircle size={16} className="animate-spin" />}
-          {pending ? "Saving…" : "Save recurring schedule"}
+          {pending ? "Saving..." : "Save schedule"}
         </button>
       </div>
     </form>
   );
 }
 
-function WalletIcon() {
-  return <span className="text-xl font-bold">$</span>;
-}
-
-function Summary({
-  title,
-  amount,
-  icon,
-  tone,
-}: {
-  title: string;
-  amount: number;
-  icon: ReactNode;
-  tone: "green" | "rose" | "indigo";
-}) {
-  const styles = {
-    green: "bg-emerald-50 text-emerald-700",
-    rose: "bg-rose-50 text-rose-700",
-    indigo: "bg-indigo-50 text-indigo-700",
-  };
-
-  return (
-    <div className="card p-5">
-      <div className="flex items-center justify-between">
-        <p className="muted text-sm font-medium">{title}</p>
-        <span className={`rounded-xl p-2 ${styles[tone]}`}>{icon}</span>
-      </div>
-      <p className="text-2xl md:text-3xl font-bold mt-4 tracking-tight">{money(amount)}</p>
-      <p className="muted text-xs mt-2">Selected month</p>
-    </div>
-  );
-}
-
-function TransactionModal({
+function TransactionForm({
   transaction,
+  dark,
   onClose,
   onSaved,
 }: {
   transaction: Transaction | null;
+  dark: boolean;
   onClose: () => void;
   onSaved: (t: Transaction) => void;
 }) {
@@ -798,108 +966,100 @@ function TransactionModal({
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
 
-  function submit(formData: FormData) {
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
+    const fd = new FormData(event.currentTarget);
 
     startTransition(async () => {
-      const state: ActionState = await saveTransaction({}, formData);
+      const result: ActionState = await saveTransaction({}, fd);
 
-      if (state?.error) {
-        setError(state.error);
+      if (result?.error) {
+        setError(result.error);
         return;
       }
 
-      const id = String(formData.get("id") ?? "");
-
-      const local: Transaction = {
+      const id = String(fd.get("id") ?? "");
+      const updated: Transaction = {
         id: id || `local-${Date.now()}`,
         user_id: transaction?.user_id ?? "",
         kind,
-        amount: Number(formData.get("amount")),
+        amount: Number(fd.get("amount")),
         category,
-        description: String(formData.get("description") ?? "").trim(),
-        transaction_date: String(formData.get("transaction_date") ?? ""),
+        description: String(fd.get("description") ?? "").trim(),
+        transaction_date: String(fd.get("transaction_date") ?? ""),
         created_at: transaction?.created_at ?? new Date().toISOString(),
       };
 
-      onSaved(local);
+      onSaved(updated);
     });
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/40 p-4 flex items-center justify-center"
-      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !pending) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="modal-title" className="card p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-6">
+      <div role="dialog" aria-modal="true" aria-labelledby="transaction-title" className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border p-6 shadow-2xl ${dark ? "border-slate-700 bg-slate-900 text-slate-100" : "border-white bg-white text-slate-900"}`}>
+        <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h2 id="modal-title" className="text-xl font-bold">
+            <h2 id="transaction-title" className="text-xl font-black">
               {transaction ? "Edit transaction" : "Add transaction"}
             </h2>
-            <p className="muted text-sm mt-1">Your changes will be saved to the cloud.</p>
+            <p className="mt-1 text-sm text-slate-500">Enter the details below.</p>
           </div>
-          <button className="btn btn-light !p-2" onClick={onClose} aria-label="Close">
+          <button type="button" className={secondaryButton} onClick={onClose} disabled={pending} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <form action={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4">
           <input type="hidden" name="id" value={transaction?.id ?? ""} />
+          <input type="hidden" name="kind" value={kind} />
 
           <div>
-            <label className="label">Transaction type</label>
+            <label className="mb-2 block text-sm font-semibold">Transaction type</label>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => { setKind("expense"); setCategory("Food"); }}
-                className={`rounded-xl p-3 border font-semibold ${kind === "expense" ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200"}`}
-              >
-                Expense
+              <button type="button" onClick={() => { setKind("expense"); setCategory("Food"); }} className={`rounded-xl border p-3 font-semibold ${kind === "expense" ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200"}`}>
+                <ArrowUpRight size={17} className="mr-2 inline" /> Expense
               </button>
-              <button
-                type="button"
-                onClick={() => { setKind("income"); setCategory("Salary"); }}
-                className={`rounded-xl p-3 border font-semibold ${kind === "income" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200"}`}
-              >
-                Income
+              <button type="button" onClick={() => { setKind("income"); setCategory("Salary"); }} className={`rounded-xl border p-3 font-semibold ${kind === "income" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200"}`}>
+                <ArrowDownLeft size={17} className="mr-2 inline" /> Income
               </button>
             </div>
-            <input type="hidden" name="kind" value={kind} />
           </div>
 
           <div>
-            <label className="label" htmlFor="amount">Amount (CAD)</label>
-            <input className="field" id="amount" name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" defaultValue={transaction ? Number(transaction.amount).toFixed(2) : ""} placeholder="0.00" required />
+            <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-amount">Amount (CAD)</label>
+            <input className={field} id="transaction-amount" name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" defaultValue={transaction ? Number(transaction.amount).toFixed(2) : ""} placeholder="0.00" required />
           </div>
 
           <div>
-            <label className="label" htmlFor="category">Category</label>
-            <select className="field" id="category" name="category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-category">Category</label>
+            <select className={field} id="transaction-category" name="category" value={category} onChange={(e) => setCategory(e.target.value)}>
               {CATEGORIES[kind].map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="label" htmlFor="description">Description (optional)</label>
-            <input className="field" id="description" name="description" maxLength={240} defaultValue={transaction?.description ?? ""} placeholder="e.g. October rent" />
+            <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-description">Description (optional)</label>
+            <input className={field} id="transaction-description" name="description" maxLength={240} defaultValue={transaction?.description ?? ""} placeholder="e.g. Groceries" />
           </div>
 
           <div>
-            <label className="label" htmlFor="transaction_date">Date</label>
-            <input className="field" id="transaction_date" name="transaction_date" type="date" defaultValue={transaction?.transaction_date ?? today()} required />
+            <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-date">Date</label>
+            <input className={field} id="transaction-date" name="transaction_date" type="date" defaultValue={transaction?.transaction_date ?? today()} required />
           </div>
 
-          {error && <p role="alert" className="rounded-lg bg-rose-50 text-rose-700 p-3 text-sm">{error}</p>}
+          {error && <p role="alert" className="rounded-xl bg-rose-100 p-3 text-sm text-rose-700">{error}</p>}
 
           <div className="flex gap-3 pt-2">
-            <button type="button" className="btn btn-light flex-1" onClick={onClose}>Cancel</button>
-            <button disabled={pending} type="submit" className="btn btn-primary flex-1">
+            <button type="button" className={`${secondaryButton} flex-1`} onClick={onClose} disabled={pending}>Cancel</button>
+            <button type="submit" className={`${primaryButton} flex-1`} disabled={pending}>
               {pending && <LoaderCircle size={16} className="animate-spin" />}
-              {pending ? "Saving…" : transaction ? "Save changes" : "Save transaction"}
+              {pending ? "Saving..." : transaction ? "Save changes" : "Save transaction"}
             </button>
           </div>
         </form>
