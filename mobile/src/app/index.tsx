@@ -24,7 +24,9 @@ import {
   currentMonth,
   monthLabel,
   money,
+  nextMonth,
   projectedRecurringTotal,
+  recentMonths,
   type RecurringTransaction,
   type Transaction,
 } from '@/lib/finance';
@@ -32,6 +34,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme, useThemeMode } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
+  const monthOptions = useMemo(() => recentMonths(6), []);
   const theme = useTheme();
   const { mode, setMode } = useThemeMode();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -78,14 +81,31 @@ export default function HomeScreen() {
 
       setAuthenticated(true);
       setUserEmail(session.user.email ?? '');
-      const [transactionResult, recurringResult] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select(
-            'id, user_id, kind, amount, category, description, transaction_date, created_at'
-          )
-          .order('transaction_date', { ascending: false })
-          .order('created_at', { ascending: false }),
+      const [transactionData, recurringResult] = await Promise.all([
+        (async () => {
+          const allTransactions: Transaction[] = [];
+          const startDate = `${monthOptions[0]}-01`;
+          const endDate = `${nextMonth(monthOptions[monthOptions.length - 1])}-01`;
+
+          for (let from = 0; ; from += 500) {
+            const { data, error: queryError } = await supabase
+              .from('transactions')
+              .select(
+                'id, user_id, kind, amount, category, description, transaction_date, created_at'
+              )
+              .gte('transaction_date', startDate)
+              .lt('transaction_date', endDate)
+              .order('transaction_date', { ascending: false })
+              .order('created_at', { ascending: false })
+              .range(from, from + 499);
+            if (queryError) throw queryError;
+
+            const page = (data ?? []) as Transaction[];
+            allTransactions.push(...page);
+            if (page.length < 500) break;
+          }
+          return allTransactions;
+        })(),
         supabase
           .from('recurring_transactions')
           .select(
@@ -94,8 +114,7 @@ export default function HomeScreen() {
           .order('next_due_date', { ascending: true }),
       ]);
 
-      if (transactionResult.error) throw transactionResult.error;
-      setTransactions((transactionResult.data ?? []) as Transaction[]);
+      setTransactions(transactionData);
       if (recurringResult.error) {
         setRecurringSchedules([]);
         setRecurringError(
@@ -116,7 +135,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [monthOptions]);
 
   const submitAuth = async () => {
     setAuthLoading(true);
@@ -268,6 +287,24 @@ export default function HomeScreen() {
   const topCategories = Object.entries(spendingByCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
+  const monthlyTrend = monthOptions.map((trendMonth) => {
+    const monthTransactions = transactions.filter((transaction) =>
+      transaction.transaction_date.startsWith(trendMonth)
+    );
+    return {
+      month: trendMonth,
+      income: monthTransactions
+        .filter(isIncome)
+        .reduce((sum, item) => sum + Number(item.amount), 0),
+      expenses: monthTransactions
+        .filter((item) => !isIncome(item))
+        .reduce((sum, item) => sum + Number(item.amount), 0),
+    };
+  });
+  const trendMax = Math.max(
+    1,
+    ...monthlyTrend.flatMap((item) => [item.income, item.expenses])
+  );
 
   const signOut = () => {
     Alert.alert('Sign out?', 'You can sign in again at any time.', [
@@ -518,6 +555,54 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Six-month trends</Text>
+              <Text style={styles.count}>Income vs expenses</Text>
+            </View>
+            <View style={styles.chartCard}>
+              <View style={styles.chartLegend}>
+                <View style={styles.legendItem}>
+                  <View style={styles.incomeLegendMark} />
+                  <Text style={styles.category}>Income</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={styles.expenseLegendMark} />
+                  <Text style={styles.category}>Expenses</Text>
+                </View>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chartBars}
+              >
+                {monthlyTrend.map((item) => (
+                  <View key={item.month} style={styles.chartMonth}>
+                    <View style={styles.chartPair}>
+                      <View
+                        accessibilityLabel={`${item.month} income ${money(item.income)}`}
+                        style={[
+                          styles.chartBar,
+                          styles.incomeBar,
+                          { height: Math.max(4, (item.income / trendMax) * 112) },
+                        ]}
+                      />
+                      <View
+                        accessibilityLabel={`${item.month} expenses ${money(item.expenses)}`}
+                        style={[
+                          styles.chartBar,
+                          styles.expenseBar,
+                          { height: Math.max(4, (item.expenses / trendMax) * 112) },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.chartMonthLabel}>
+                      {item.month.slice(5)}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+
             <View style={styles.summaryRow}>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>Income</Text>
@@ -751,6 +836,69 @@ const createStyles = (theme: ThemeColors) =>
       gap: 4,
       marginTop: 4,
       marginBottom: 4,
+    },
+    chartCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      marginBottom: 24,
+    },
+    chartLegend: {
+      flexDirection: 'row',
+      gap: 18,
+      marginBottom: 12,
+    },
+    legendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    incomeLegendMark: {
+      width: 10,
+      height: 10,
+      borderRadius: 3,
+      backgroundColor: theme.income,
+    },
+    expenseLegendMark: {
+      width: 10,
+      height: 10,
+      borderRadius: 3,
+      backgroundColor: theme.expense,
+    },
+    chartBars: {
+      flexGrow: 1,
+      justifyContent: 'space-between',
+      gap: 10,
+      paddingTop: 4,
+    },
+    chartMonth: {
+      width: 42,
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+    },
+    chartPair: {
+      height: 116,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 4,
+    },
+    chartBar: {
+      width: 13,
+      borderTopLeftRadius: 5,
+      borderTopRightRadius: 5,
+    },
+    incomeBar: {
+      backgroundColor: theme.income,
+    },
+    expenseBar: {
+      backgroundColor: theme.expense,
+    },
+    chartMonthLabel: {
+      color: theme.textSecondary,
+      fontSize: 10,
+      marginTop: 8,
     },
     monthTitle: {
       color: theme.text,

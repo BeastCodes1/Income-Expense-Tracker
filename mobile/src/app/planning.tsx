@@ -23,6 +23,7 @@ import {
   CATEGORIES,
   currentMonth,
   money,
+  nextMonth,
   today,
   validDate,
   type Budget,
@@ -76,7 +77,9 @@ export default function PlanningScreen() {
             .order('month', { ascending: false }),
           supabase
             .from('transactions')
-            .select('id,user_id,kind,amount,category,description,transaction_date'),
+            .select('id,user_id,kind,amount,category,description,transaction_date')
+            .gte('transaction_date', `${month}-01`)
+            .lt('transaction_date', `${nextMonth(month)}-01`),
           supabase
             .from('recurring_transactions')
             .select(
@@ -110,7 +113,7 @@ export default function PlanningScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useFocusEffect(
     useCallback(() => {

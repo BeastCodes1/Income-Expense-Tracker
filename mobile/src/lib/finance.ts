@@ -67,6 +67,39 @@ export const today = () => {
 
 export const currentMonth = () => today().slice(0, 7);
 
+export function recentMonths(count: number, endMonth = currentMonth()) {
+  const [year, month] = endMonth.split('-').map(Number);
+  const end = new Date(year, month - 1, 1);
+
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(end.getFullYear(), end.getMonth() - count + index + 1, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  });
+}
+
+export function nextMonth(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const date = new Date(year, monthNumber, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function transactionsToCsv(transactions: Transaction[]) {
+  const escape = (value: string | number) =>
+    `"${String(value).replace(/"/g, '""')}"`;
+  const rows = [
+    ['Date', 'Type', 'Category', 'Description', 'Amount (CAD)'],
+    ...transactions.map((transaction) => [
+      transaction.transaction_date,
+      transaction.kind,
+      transaction.category,
+      transaction.description ?? '',
+      Number(transaction.amount).toFixed(2),
+    ]),
+  ];
+
+  return rows.map((row) => row.map(escape).join(',')).join('\r\n');
+}
+
 export const validDate = (value: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
   !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&

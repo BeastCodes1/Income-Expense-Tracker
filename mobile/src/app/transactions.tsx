@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -23,12 +25,16 @@ import {
   CATEGORIES,
   currentMonth,
   money,
+  nextMonth,
   today,
+  transactionsToCsv,
   validDate,
   type Transaction,
   type TransactionKind,
 } from '@/lib/finance';
 import { supabase } from '@/lib/supabase';
+
+const PAGE_SIZE = 25;
 
 export default function TransactionsScreen() {
   const theme = useTheme();
@@ -37,6 +43,9 @@ export default function TransactionsScreen() {
   const [month, setMonth] = useState(currentMonth());
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
   const [editor, setEditor] = useState<Transaction | null | undefined>();
@@ -46,6 +55,13 @@ export default function TransactionsScreen() {
     setError('');
 
     try {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+        setTransactions([]);
+        setHasMore(false);
+        setError('Enter a valid month in YYYY-MM format.');
+        return;
+      }
+
       const {
         data: { session },
         error: sessionError,
@@ -63,10 +79,14 @@ export default function TransactionsScreen() {
         .select(
           'id,user_id,kind,amount,category,description,transaction_date,created_at'
         )
+        .gte('transaction_date', `${month}-01`)
+        .lt('transaction_date', `${nextMonth(month)}-01`)
         .order('transaction_date', { ascending: false })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, PAGE_SIZE - 1);
       if (queryError) throw queryError;
       setTransactions((data ?? []) as Transaction[]);
+      setHasMore((data?.length ?? 0) === PAGE_SIZE);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Could not load transactions.'
@@ -74,7 +94,7 @@ export default function TransactionsScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,6 +115,78 @@ export default function TransactionsScreen() {
   );
 
   const closeEditor = () => setEditor(undefined);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !userId) return;
+    setLoadingMore(true);
+    setError('');
+
+    try {
+      const { data, error: queryError } = await supabase
+        .from('transactions')
+        .select(
+          'id,user_id,kind,amount,category,description,transaction_date,created_at'
+        )
+        .gte('transaction_date', `${month}-01`)
+        .lt('transaction_date', `${nextMonth(month)}-01`)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(transactions.length, transactions.length + PAGE_SIZE - 1);
+      if (queryError) throw queryError;
+
+      setTransactions((current) => [...current, ...((data ?? []) as Transaction[])]);
+      setHasMore((data?.length ?? 0) === PAGE_SIZE);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load more transactions.');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const exportTransactions = async () => {
+    if (exporting || !userId) return;
+    setExporting(true);
+    setError('');
+
+    try {
+      const allTransactions: Transaction[] = [];
+      for (let from = 0; ; from += 500) {
+        const { data, error: queryError } = await supabase
+          .from('transactions')
+          .select(
+            'id,user_id,kind,amount,category,description,transaction_date,created_at'
+          )
+          .order('transaction_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .range(from, from + 499);
+        if (queryError) throw queryError;
+
+        const page = (data ?? []) as Transaction[];
+        allTransactions.push(...page);
+        if (page.length < 500) break;
+      }
+
+      if (allTransactions.length === 0) {
+        setError('There are no transactions to export yet.');
+        return;
+      }
+
+      const csvFile = new File(Paths.cache, `transactions-${today()}.csv`);
+      csvFile.create({ overwrite: true });
+      csvFile.write(transactionsToCsv(allTransactions));
+      await Sharing.shareAsync(csvFile.uri, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Export transactions',
+        UTI: 'public.comma-separated-values-text',
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Could not export transactions.'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const deleteTransaction = (transaction: Transaction) => {
     Alert.alert(
@@ -169,6 +261,13 @@ export default function TransactionsScreen() {
           onPress={() => setEditor(null)}
           disabled={!userId}
         />
+        <FinanceButton
+          title={exporting ? 'Preparing CSV…' : 'Export all transactions (CSV)'}
+          theme={theme}
+          variant="secondary"
+          onPress={() => void exportTransactions()}
+          disabled={!userId || exporting}
+        />
 
         {loading ? (
           <ActivityIndicator color={theme.primary} />
@@ -194,54 +293,80 @@ export default function TransactionsScreen() {
           </FinanceCard>
         ) : visible.length === 0 ? (
           <FinanceCard theme={theme}>
+            <Text style={[ui.muted, { color: theme.textSecondary }]}>
+              {transactions.length} of this month&apos;s records loaded
+              {hasMore ? '. Load more to search older records.' : '.'}
+            </Text>
             <Text style={[ui.empty, { color: theme.textSecondary }]}>
               No transactions found for this month and search.
             </Text>
+            {hasMore ? (
+              <FinanceButton
+                title={loadingMore ? 'Loading…' : 'Load more transactions'}
+                theme={theme}
+                onPress={() => void loadMore()}
+                disabled={loadingMore}
+              />
+            ) : null}
           </FinanceCard>
         ) : (
-          visible.map((transaction) => (
-            <FinanceCard key={transaction.id} theme={theme}>
-              <View style={ui.rowSpace}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={[ui.heading, { color: theme.text }]}>
-                    {transaction.description || transaction.category}
-                  </Text>
-                  <Text style={[ui.muted, { color: theme.textSecondary }]}>
-                    {transaction.kind} · {transaction.category} ·{' '}
-                    {transaction.transaction_date}
+          <>
+            <Text style={[ui.muted, { color: theme.textSecondary }]}>
+              Showing {visible.length} matches from {transactions.length}{' '}
+              loaded{hasMore ? '. Load more to search older records.' : '.'}
+            </Text>
+            {visible.map((transaction) => (
+              <FinanceCard key={transaction.id} theme={theme}>
+                <View style={ui.rowSpace}>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={[ui.heading, { color: theme.text }]}>
+                      {transaction.description || transaction.category}
+                    </Text>
+                    <Text style={[ui.muted, { color: theme.textSecondary }]}>
+                      {transaction.kind} · {transaction.category} ·{' '}
+                      {transaction.transaction_date}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      ui.amount,
+                      {
+                        color:
+                          transaction.kind === 'income'
+                            ? theme.income
+                            : theme.expense,
+                      },
+                    ]}
+                  >
+                    {transaction.kind === 'income' ? '+' : '−'}
+                    {money(Number(transaction.amount))}
                   </Text>
                 </View>
-                <Text
-                  style={[
-                    ui.amount,
-                    {
-                      color:
-                        transaction.kind === 'income'
-                          ? theme.income
-                          : theme.expense,
-                    },
-                  ]}
-                >
-                  {transaction.kind === 'income' ? '+' : '−'}
-                  {money(Number(transaction.amount))}
-                </Text>
-              </View>
-              <View style={ui.row}>
-                <FinanceButton
-                  title="Edit"
-                  theme={theme}
-                  variant="secondary"
-                  onPress={() => setEditor(transaction)}
-                />
-                <FinanceButton
-                  title="Delete"
-                  theme={theme}
-                  variant="danger"
-                  onPress={() => deleteTransaction(transaction)}
-                />
-              </View>
-            </FinanceCard>
-          ))
+                <View style={ui.row}>
+                  <FinanceButton
+                    title="Edit"
+                    theme={theme}
+                    variant="secondary"
+                    onPress={() => setEditor(transaction)}
+                  />
+                  <FinanceButton
+                    title="Delete"
+                    theme={theme}
+                    variant="danger"
+                    onPress={() => deleteTransaction(transaction)}
+                  />
+                </View>
+              </FinanceCard>
+            ))}
+            {hasMore ? (
+              <FinanceButton
+                title={loadingMore ? 'Loading…' : 'Load more transactions'}
+                theme={theme}
+                onPress={() => void loadMore()}
+                disabled={loadingMore}
+              />
+            ) : null}
+          </>
         )}
       </ScrollView>
 
