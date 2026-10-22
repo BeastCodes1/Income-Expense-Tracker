@@ -276,17 +276,17 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <input
               aria-label="Choose month"
-              className={`${field} w-auto`}
+              className={`${field} w-full sm:w-auto`}
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
             />
             <button
               type="button"
-              className={primaryButton}
+              className={`${primaryButton} w-full sm:w-auto`}
               onClick={() => {
                 setEditing(null);
                 setShowTransactionForm(true);
@@ -535,45 +535,80 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               Add regular salary payments, rent, bills, or other recurring income and expenses.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[620px] text-left text-sm">
-                <thead>
-                  <tr className={textMuted}>
-                    <th className="pb-3 pr-4 font-medium">Schedule</th>
-                    <th className="pb-3 pr-4 font-medium">Frequency</th>
-                    <th className="pb-3 pr-4 font-medium">Next due</th>
-                    <th className="pb-3 pr-4 text-right font-medium">Amount</th>
-                    <th className="pb-3 text-right font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recurring.map((t) => (
-                    <tr key={t.id} className={tableRow}>
-                      <td className="py-4 pr-4">
-                        <p className="font-semibold">{t.description || t.category}</p>
+            <>
+              <div className="space-y-3 md:hidden">
+                {recurring.map((t) => (
+                  <article
+                    key={t.id}
+                    className={`rounded-2xl border p-4 ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold">{t.description || t.category}</p>
                         <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind} · {t.category}</p>
-                      </td>
-                      <td className="py-4 pr-4 capitalize">{t.frequency}</td>
-                      <td className={`py-4 pr-4 ${textMuted}`}>{t.next_due_date}</td>
-                      <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                      </div>
+                      <p className={`shrink-0 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
                         {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
-                      </td>
-                      <td className="py-4 text-right">
-                        <button
-                          type="button"
-                          className={secondaryButton}
-                          aria-label="Delete recurring schedule"
-                          disabled={busyId === t.id}
-                          onClick={() => void removeRecurring(t.id)}
-                        >
-                          {busyId === t.id ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                        </button>
-                      </td>
+                      </p>
+                    </div>
+                    <div className={`mt-3 flex justify-between gap-3 border-t pt-3 text-sm ${dark ? "border-slate-800" : "border-slate-100"}`}>
+                      <span className="capitalize">{t.frequency}</span>
+                      <span className={textMuted}>Next: {t.next_due_date}</span>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        aria-label={`Delete ${t.description || t.category} recurring schedule`}
+                        disabled={busyId === t.id}
+                        onClick={() => void removeRecurring(t.id)}
+                      >
+                        {busyId === t.id ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead>
+                    <tr className={textMuted}>
+                      <th className="pb-3 pr-4 font-medium">Schedule</th>
+                      <th className="pb-3 pr-4 font-medium">Frequency</th>
+                      <th className="pb-3 pr-4 font-medium">Next due</th>
+                      <th className="pb-3 pr-4 text-right font-medium">Amount</th>
+                      <th className="pb-3 text-right font-medium">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {recurring.map((t) => (
+                      <tr key={t.id} className={tableRow}>
+                        <td className="py-4 pr-4">
+                          <p className="font-semibold">{t.description || t.category}</p>
+                          <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind} · {t.category}</p>
+                        </td>
+                        <td className="py-4 pr-4 capitalize">{t.frequency}</td>
+                        <td className={`py-4 pr-4 ${textMuted}`}>{t.next_due_date}</td>
+                        <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                          {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
+                        </td>
+                        <td className="py-4 text-right">
+                          <button
+                            type="button"
+                            className={secondaryButton}
+                            aria-label="Delete recurring schedule"
+                            disabled={busyId === t.id}
+                            onClick={() => void removeRecurring(t.id)}
+                          >
+                            {busyId === t.id ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           <p className={`mt-4 text-xs ${textMuted}`}>
@@ -622,71 +657,126 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[650px] text-left text-sm">
-                <thead>
-                  <tr className={textMuted}>
-                    <th className="pb-3 pr-4 font-medium">Transaction</th>
-                    <th className="pb-3 pr-4 font-medium">Category</th>
-                    <th className="pb-3 pr-4 font-medium">Date</th>
-                    <th className="pb-3 pr-4 text-right font-medium">Amount</th>
-                    <th className="pb-3 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((t) => (
-                    <tr key={t.id} className={tableRow}>
-                      <td className="py-4 pr-4">
-                        <div className="flex items-center gap-3">
-                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                            {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
-                          </span>
-                          <div>
-                            <p className="font-semibold">{t.description || t.category}</p>
-                            <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 pr-4">
-                        <span className={`rounded-full px-3 py-1 text-xs font-medium ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
-                          {t.category}
+            <>
+              <div className="space-y-3 md:hidden">
+                {visible.map((t) => (
+                  <article
+                    key={t.id}
+                    className={`rounded-2xl border p-4 ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                          {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
                         </span>
-                      </td>
-                      <td className={`py-4 pr-4 whitespace-nowrap ${textMuted}`}>
+                        <div className="min-w-0">
+                          <p className="break-words font-semibold">{t.description || t.category}</p>
+                          <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind}</p>
+                        </div>
+                      </div>
+                      <p className={`shrink-0 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                        {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
+                      </p>
+                    </div>
+                    <div className={`mt-3 flex items-center justify-between gap-3 border-t pt-3 text-sm ${dark ? "border-slate-800" : "border-slate-100"}`}>
+                      <span className={`rounded-full px-3 py-1 text-xs font-medium ${dark ? "bg-slate-800" : "bg-slate-100"}`}>{t.category}</span>
+                      <span className={`text-right ${textMuted}`}>
                         {new Date(`${t.transaction_date}T12:00:00`).toLocaleDateString("en-CA", {
                           year: "numeric", month: "short", day: "numeric",
                         })}
-                      </td>
-                      <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
-                        {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
-                      </td>
-                      <td className="py-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          className={`${secondaryButton} mr-2`}
-                          aria-label="Edit transaction"
-                          onClick={() => {
-                            setEditing(t);
-                            setShowTransactionForm(true);
-                          }}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className={secondaryButton}
-                          aria-label="Delete transaction"
-                          disabled={busyId === t.id}
-                          onClick={() => void removeTransaction(t.id)}
-                        >
-                          {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        </button>
-                      </td>
+                      </span>
+                    </div>
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        aria-label={`Edit ${t.description || t.category}`}
+                        onClick={() => {
+                          setEditing(t);
+                          setShowTransactionForm(true);
+                        }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className={secondaryButton}
+                        aria-label={`Delete ${t.description || t.category}`}
+                        disabled={busyId === t.id}
+                        onClick={() => void removeTransaction(t.id)}
+                      >
+                        {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[650px] text-left text-sm">
+                  <thead>
+                    <tr className={textMuted}>
+                      <th className="pb-3 pr-4 font-medium">Transaction</th>
+                      <th className="pb-3 pr-4 font-medium">Category</th>
+                      <th className="pb-3 pr-4 font-medium">Date</th>
+                      <th className="pb-3 pr-4 text-right font-medium">Amount</th>
+                      <th className="pb-3 text-right font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {visible.map((t) => (
+                      <tr key={t.id} className={tableRow}>
+                        <td className="py-4 pr-4">
+                          <div className="flex items-center gap-3">
+                            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                              {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
+                            </span>
+                            <div>
+                              <p className="font-semibold">{t.description || t.category}</p>
+                              <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
+                            {t.category}
+                          </span>
+                        </td>
+                        <td className={`py-4 pr-4 whitespace-nowrap ${textMuted}`}>
+                          {new Date(`${t.transaction_date}T12:00:00`).toLocaleDateString("en-CA", {
+                            year: "numeric", month: "short", day: "numeric",
+                          })}
+                        </td>
+                        <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
+                          {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
+                        </td>
+                        <td className="py-4 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            className={`${secondaryButton} mr-2`}
+                            aria-label="Edit transaction"
+                            onClick={() => {
+                              setEditing(t);
+                              setShowTransactionForm(true);
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className={secondaryButton}
+                            aria-label="Delete transaction"
+                            disabled={busyId === t.id}
+                            onClick={() => void removeTransaction(t.id)}
+                          >
+                            {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </section>
 

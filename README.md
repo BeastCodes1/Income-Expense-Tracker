@@ -9,6 +9,8 @@ A starter full-stack personal finance app using Next.js App Router, TypeScript, 
 - Search and month filtering
 - Summary cards and recurring schedules
 - Monthly budgets by expense category, progress bars, and 80% / over-budget warnings
+- Responsive dashboard layouts for mobile and desktop
+- Persistent light and dark themes
 - Row Level Security: users can only access their own records
 
 ## 1. Requirements

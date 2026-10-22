@@ -14,16 +14,19 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(STORAGE_KEY);
     if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
+    setInitialized(true);
   }, []);
 
   useEffect(() => {
+    if (!initialized) return;
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+  }, [initialized, theme]);
 
   function toggleTheme() {
     setTheme((current) => current === "dark" ? "light" : "dark");
