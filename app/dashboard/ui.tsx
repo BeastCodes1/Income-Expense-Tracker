@@ -126,6 +126,39 @@ const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 te
 const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryButton = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
 
+function AnimatedPresence({
+  open,
+  children,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(open);
+
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+
+  if (!open && !mounted) return null;
+
+  return (
+    <div
+      className={`animated-presence ${open ? "motion-enter" : "motion-exit"}`}
+      onAnimationEnd={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          event.animationName === "panel-exit" &&
+          !open
+        ) {
+          setMounted(false);
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Dashboard({
   initialTransactions,
   initialRecurring,
@@ -447,7 +480,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             </button>
           </div>
 
-          {showBudgetForm && (
+          <AnimatedPresence open={showBudgetForm}>
             <BudgetForm
               key={editingBudget?.id ?? "new-budget"}
               month={month}
@@ -463,7 +496,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                 refresh();
               }}
             />
-          )}
+          </AnimatedPresence>
 
           {monthBudgets.length > 0 && (
             <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -593,7 +626,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             </button>
           </div>
 
-          {showRecurringForm && (
+          <AnimatedPresence open={showRecurringForm}>
             <RecurringForm
               dark={dark}
               onCancel={() => setShowRecurringForm(false)}
@@ -602,7 +635,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                 refresh();
               }}
             />
-          )}
+          </AnimatedPresence>
 
           {recurring.length === 0 ? (
             <p className={`py-6 text-center text-sm ${textMuted}`}>
@@ -908,7 +941,6 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                 ? [updated, ...old]
                 : old.map((t) => t.id === updated.id ? updated : t),
             );
-            setShowTransactionForm(false);
             refresh();
           }}
         />
@@ -1151,6 +1183,11 @@ function TransactionForm({
   const [category, setCategory] = useState(transaction?.category ?? "Food");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+  const [closing, setClosing] = useState(false);
+
+  function close(force = false) {
+    if ((!pending || force) && !closing) setClosing(true);
+  }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1178,17 +1215,23 @@ function TransactionForm({
       };
 
       onSaved(updated);
+      close(true);
     });
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm ${closing ? "pointer-events-none transaction-modal-exit" : "transaction-modal-enter"}`}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !pending) onClose();
+        if (e.target === e.currentTarget) close();
+      }}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && event.animationName === "modal-exit") {
+          onClose();
+        }
       }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="transaction-title" className={`max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border p-6 shadow-2xl ${dark ? "border-slate-700 bg-slate-900 text-slate-100" : "border-white bg-white text-slate-900"}`}>
+      <div role="dialog" aria-modal="true" aria-labelledby="transaction-title" className={`transaction-modal-card max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border p-6 shadow-2xl ${dark ? "border-slate-700 bg-slate-900 text-slate-100" : "border-white bg-white text-slate-900"}`}>
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 id="transaction-title" className="text-xl font-black">
@@ -1196,7 +1239,7 @@ function TransactionForm({
             </h2>
             <p className="mt-1 text-sm text-slate-500">Enter the details below.</p>
           </div>
-          <button type="button" className={secondaryButton} onClick={onClose} disabled={pending} aria-label="Close">
+          <button type="button" className={secondaryButton} onClick={() => close()} disabled={pending || closing} aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -1242,7 +1285,7 @@ function TransactionForm({
           {error && <p role="alert" className="rounded-xl bg-rose-100 p-3 text-sm text-rose-700">{error}</p>}
 
           <div className="flex gap-3 pt-2">
-            <button type="button" className={`${secondaryButton} flex-1`} onClick={onClose} disabled={pending}>Cancel</button>
+            <button type="button" className={`${secondaryButton} flex-1`} onClick={() => close()} disabled={pending || closing}>Cancel</button>
             <button type="submit" className={`${primaryButton} flex-1`} disabled={pending}>
               {pending && <LoaderCircle size={16} className="animate-spin" />}
               {pending ? "Saving..." : transaction ? "Save changes" : "Save transaction"}
