@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   deleteTransaction,
@@ -10,6 +10,8 @@ import {
   deleteRecurringTransaction,
   saveBudget,
   deleteBudget,
+  exportTransactionsCsv,
+  importTransactionsCsv,
   type ActionState,
 } from "@/app/actions";
 import type {
@@ -34,6 +36,8 @@ import {
   CheckCircle2,
   TrendingUp,
   Sparkles,
+  Download,
+  Upload,
 } from "lucide-react";
 import { useTheme } from "@/app/theme-provider";
 
@@ -147,13 +151,83 @@ export function Dashboard({
   const [showRecurringForm, setShowRecurringForm] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, startRefresh] = useTransition();
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [csvMessage, setCsvMessage] = useState<ActionState>({});
+  const csvToolsRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => setTransactions(initialTransactions), [initialTransactions]);
   useEffect(() => setRecurring(initialRecurring), [initialRecurring]);
   useEffect(() => setBudgets(initialBudgets), [initialBudgets]);
+  useEffect(() => {
+    if (csvMessage.error || csvMessage.success) {
+      csvToolsRef.current?.setAttribute("open", "");
+    }
+  }, [csvMessage]);
 
   function refresh() {
     startRefresh(() => router.refresh());
+  }
+
+  async function exportCsv() {
+    if (exporting || importing) return;
+    setExporting(true);
+    setCsvMessage({});
+
+    try {
+      const result = await exportTransactionsCsv();
+      if (result.error) {
+        setCsvMessage({ error: result.error });
+        return;
+      }
+      if (!result.csv) {
+        setCsvMessage({ error: "Could not export transactions. Please try again." });
+        return;
+      }
+
+      const url = URL.createObjectURL(
+        new Blob(["\uFEFF", result.csv], { type: "text/csv;charset=utf-8" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `transactions-${today()}.csv`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setCsvMessage({ success: "Transactions exported." });
+    } catch (error) {
+      setCsvMessage({
+        error: error instanceof Error ? error.message : "Could not export transactions.",
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function importCsv(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || importing || exporting) return;
+
+    setImporting(true);
+    setCsvMessage({});
+
+    try {
+      const formData = new FormData();
+      formData.set("csv", await file.text());
+      const result = await importTransactionsCsv({}, formData);
+      setCsvMessage(
+        result.success
+          ? { success: `${result.success} Importing adds new records; it does not update existing transactions.` }
+          : result,
+      );
+      if (result.success) refresh();
+    } catch (error) {
+      setCsvMessage({
+        error: error instanceof Error ? error.message : "Could not import this CSV file.",
+      });
+    } finally {
+      setImporting(false);
+    }
   }
 
   const visible = useMemo(
@@ -261,7 +335,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
     : "border-b border-slate-100 last:border-0";
 
   return (
-    <div className={`dashboard-theme ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
+    <div className={`dashboard-theme ${dark ? "theme-dark" : ""} ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
       <div className="mx-auto max-w-7xl space-y-7">
 
         {/* Dashboard heading */}
@@ -276,17 +350,17 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               aria-label="Choose month"
-              className={`${field} w-full sm:w-auto`}
+              className={`${field} w-auto`}
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
             />
             <button
               type="button"
-              className={`${primaryButton} w-full sm:w-auto`}
+              className={primaryButton}
               onClick={() => {
                 setEditing(null);
                 setShowTransactionForm(true);
@@ -635,6 +709,42 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               />
             </div>
           </div>
+
+          <details
+            ref={csvToolsRef}
+            className={`mb-5 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+              <Upload size={16} />
+              Import or export CSV
+            </summary>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={secondaryButton}
+                onClick={() => void exportCsv()}
+                disabled={exporting || importing}
+              >
+                <Download size={16} /> {exporting ? "Exporting..." : "Export CSV"}
+              </button>
+              <label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 ${importing || exporting ? "pointer-events-none opacity-60" : ""}`}>
+                <Upload size={16} /> {importing ? "Importing..." : "Import CSV"}
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="sr-only"
+                  aria-label="Import transactions from CSV"
+                  disabled={importing || exporting}
+                  onChange={(event) => void importCsv(event)}
+                />
+              </label>
+            </div>
+            <p className={`mt-3 text-xs ${textMuted}`}>
+              Imports add new transactions from a CSV exported by Pocket Ledger.
+            </p>
+            {csvMessage.error && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{csvMessage.error}</p>}
+            {csvMessage.success && <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{csvMessage.success}</p>}
+          </details>
 
           {visible.length === 0 ? (
             <div className="py-12 text-center">

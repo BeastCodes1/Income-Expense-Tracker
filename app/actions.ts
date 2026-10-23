@@ -3,8 +3,60 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { parseTransactionsCsv, transactionsToCsv } from "@/lib/transactions-csv";
 
 export type ActionState = { error?: string; success?: string };
+
+export async function exportTransactionsCsv(): Promise<{ error?: string; csv?: string }> {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) redirect("/login");
+
+  const transactions = [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("kind,amount,category,description,transaction_date")
+      .eq("user_id", user.id)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + 499);
+    if (error) return { error: "Could not export transactions. Please try again." };
+
+    transactions.push(...(data ?? []));
+    if ((data?.length ?? 0) < 500) break;
+  }
+
+  if (transactions.length === 0) return { error: "There are no transactions to export yet." };
+  return { csv: transactionsToCsv(transactions) };
+}
+
+export async function importTransactionsCsv(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) redirect("/login");
+
+  const csv = formData.get("csv");
+  if (typeof csv !== "string") return { error: "Choose a CSV file to import." };
+
+  const parsed = parseTransactionsCsv(csv);
+  if (parsed.error) return { error: parsed.error };
+
+  const { error } = await supabase
+    .from("transactions")
+    .insert(parsed.transactions.map((transaction) => ({
+      ...transaction,
+      user_id: user.id,
+    })));
+  if (error) return { error: `Could not import transactions: ${error.message}` };
+
+  revalidatePath("/dashboard");
+  return { success: `Imported ${parsed.transactions.length} transaction${parsed.transactions.length === 1 ? "" : "s"}.` };
+}
 
 function safeRedirectPath(value: FormDataEntryValue | null, fallback = "/dashboard") {
   const path = typeof value === "string" ? value : fallback;
