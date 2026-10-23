@@ -21,8 +21,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "reset" | "new-p
   const title = mode === "login" ? "Welcome back" : mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Choose a new password";
   const subtitle = mode === "login" ? "Sign in to see your saved transactions." : mode === "signup" ? "Start keeping your money organized." : mode === "reset" ? "We'll email you a secure reset link." : "Use at least 8 characters.";
 
-  return <main className="shell min-h-screen flex items-center justify-center py-10">
-    <div className="card w-full max-w-md p-6 sm:p-8">
+  return <main className="auth-page-enter shell min-h-screen flex items-center justify-center py-10">
+    <div className="auth-card-enter card w-full max-w-md p-6 sm:p-8">
       <Link href="/" className="text-indigo-600 text-sm font-semibold">← Pocket Ledger</Link>
       <h1 className="text-3xl font-bold mt-6">{title}</h1>
       <p className="muted mt-2 mb-6">{subtitle}</p>

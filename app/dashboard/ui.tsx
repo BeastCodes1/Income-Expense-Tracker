@@ -39,6 +39,7 @@ import {
   Download,
   Upload,
   SlidersHorizontal,
+  ChevronDown,
 } from "lucide-react";
 import { useTheme } from "@/app/theme-provider";
 
@@ -122,7 +123,7 @@ function projectedRecurringTotal(
   return total;
 }
 
-const panel = "rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6";
+const panel = "rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-md sm:p-6";
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
 const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryButton = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
@@ -398,7 +399,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
     : "bg-slate-50 text-slate-900 [--muted:#64748b] [--panel:#ffffff] [--line:#e2e8f0]";
 
   const panelClass = dark
-    ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-sm sm:p-6"
+    ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-md sm:p-6"
     : panel;
 
   const textMuted = dark ? "text-slate-400" : "text-slate-500";
@@ -458,7 +459,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               <TrendingUp size={22} />
             </span>
             <div>
-              <h2 className="text-lg font-bold">Spending insights</h2>
+              <h2 className="text-lg font-bold tracking-tight">Spending insights</h2>
               <p className={`mt-1 text-sm ${textMuted}`}>
                 Where your recorded money went this month.
               </p>
@@ -502,7 +503,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                 <PiggyBank size={22} />
               </span>
               <div>
-                <h2 className="text-lg font-bold">Monthly budgets</h2>
+                <h2 className="text-lg font-bold tracking-tight">Monthly budgets</h2>
                 <p className={`mt-1 text-sm ${textMuted}`}>Plan ahead and keep spending on track.</p>
               </div>
             </div>
@@ -649,7 +650,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                 <Repeat size={22} />
               </span>
               <div>
-                <h2 className="text-lg font-bold">Recurring transactions</h2>
+                <h2 className="text-lg font-bold tracking-tight">Recurring transactions</h2>
                 <p className={`mt-1 text-sm ${textMuted}`}>
                   {recurring.length} saved schedule{recurring.length === 1 ? "" : "s"}
                 </p>
@@ -766,7 +767,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
         <section className={panelClass}>
           <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-lg font-bold">Transactions</h2>
+              <h2 className="text-lg font-bold tracking-tight">Transactions</h2>
               <p className={`mt-1 text-sm ${textMuted}`}>
                 {visible.length} record{visible.length === 1 ? "" : "s"} · {monthLabel}
               </p>
@@ -783,7 +784,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
           </div>
 
           <details className={`mb-5 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}>
-            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+            <summary className="disclosure-summary flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
               <SlidersHorizontal size={16} />
               More filters
               {activeFilterCount > 0 && (
@@ -791,6 +792,7 @@ setTransactions((old) => old.filter((t) => t.id !== id));
                   {activeFilterCount} active
                 </span>
               )}
+              <ChevronDown className="disclosure-chevron ml-auto" size={16} aria-hidden="true" />
             </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
@@ -887,9 +889,10 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             ref={csvToolsRef}
             className={`mb-5 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}
           >
-            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+            <summary className="disclosure-summary flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
               <Upload size={16} />
               Import or export CSV
+              <ChevronDown className="disclosure-chevron ml-auto" size={16} aria-hidden="true" />
             </summary>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
