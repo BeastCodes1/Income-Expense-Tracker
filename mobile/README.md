@@ -28,7 +28,9 @@ In the output, you'll find options to open the app in a
 The mobile app includes the desktop dashboard's main features:
 
 - Monthly income, expenses, net and projected balances, and spending insights
-- Search, add, edit, and delete transactions
+- Search, add, edit, and delete transactions; filter by type, category, date,
+  and amount
+- Import and export transactions as validated CSV files
 - Monthly category budgets with spending progress
 - Recurring income and expense schedules
 - Sign in, account creation, password reset, and sign out

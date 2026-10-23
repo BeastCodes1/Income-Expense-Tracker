@@ -17,6 +17,7 @@ import { useFocusEffect } from 'expo-router';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useURL } from 'expo-linking';
+import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ThemeColors } from '@/constants/theme';
 import { FinanceField } from '@/components/finance-ui';
@@ -399,7 +400,11 @@ export default function HomeScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <View style={styles.messageCard}>
+            <Animated.View
+              key={authMode}
+              entering={FadeInDown.duration(280).reduceMotion(ReduceMotion.System)}
+              style={styles.messageCard}
+            >
               <Text style={styles.emptyTitle}>
                 {authMode === 'login'
                   ? 'Welcome back'
@@ -521,12 +526,12 @@ export default function HomeScreen() {
                   <Text style={styles.authModeText}>Forgot your password?</Text>
                 </TouchableOpacity>
               ) : null}
-            </View>
+            </Animated.View>
           </KeyboardAvoidingView>
         ) : error ? (
           <View style={styles.messageCard}>
             <Text style={styles.errorTitle}>
-              Couldn't load your transactions
+              Couldn&apos;t load your transactions
             </Text>
             <Text style={styles.messageText}>{error}</Text>
             <TouchableOpacity

@@ -3,14 +3,22 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  ReduceMotion,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CategoryChoices,
@@ -26,6 +34,7 @@ import {
   currentMonth,
   money,
   nextMonth,
+  parseTransactionsCsv,
   today,
   transactionsToCsv,
   validDate,
@@ -45,10 +54,22 @@ export default function TransactionsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
+  const [csvError, setCsvError] = useState('');
+  const [csvSuccess, setCsvSuccess] = useState('');
   const [userId, setUserId] = useState('');
   const [editor, setEditor] = useState<Transaction | null | undefined>();
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [kindFilter, setKindFilter] = useState<
+    'all' | TransactionKind
+  >('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [minimumAmount, setMinimumAmount] = useState('');
+  const [maximumAmount, setMaximumAmount] = useState('');
 
   const loadTransactions = useCallback(async () => {
     setLoading(true);
@@ -102,17 +123,83 @@ export default function TransactionsScreen() {
     }, [loadTransactions])
   );
 
-  const visible = useMemo(
-    () =>
-      transactions.filter(
-        (transaction) =>
-          transaction.transaction_date.startsWith(month) &&
-          `${transaction.category} ${transaction.description} ${transaction.kind}`
-            .toLowerCase()
-            .includes(search.trim().toLowerCase())
-      ),
-    [transactions, month, search]
-  );
+  const filterIssue = useMemo(() => {
+    if (dateFrom && !validDate(dateFrom)) {
+      return 'Enter a valid start date as YYYY-MM-DD.';
+    }
+    if (dateTo && !validDate(dateTo)) {
+      return 'Enter a valid end date as YYYY-MM-DD.';
+    }
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      return 'The start date must be on or before the end date.';
+    }
+    if (
+      minimumAmount &&
+      (!/^\d+(\.\d{1,2})?$/.test(minimumAmount) ||
+        !Number.isFinite(Number(minimumAmount)))
+    ) {
+      return 'Enter a valid minimum amount with up to 2 decimal places.';
+    }
+    if (
+      maximumAmount &&
+      (!/^\d+(\.\d{1,2})?$/.test(maximumAmount) ||
+        !Number.isFinite(Number(maximumAmount)))
+    ) {
+      return 'Enter a valid maximum amount with up to 2 decimal places.';
+    }
+    if (
+      minimumAmount &&
+      maximumAmount &&
+      Number(minimumAmount) > Number(maximumAmount)
+    ) {
+      return 'The minimum amount cannot exceed the maximum amount.';
+    }
+    return '';
+  }, [dateFrom, dateTo, minimumAmount, maximumAmount]);
+
+  const activeFilterCount = [
+    kindFilter !== 'all',
+    categoryFilter !== 'all',
+    dateFrom !== '',
+    dateTo !== '',
+    minimumAmount !== '',
+    maximumAmount !== '',
+  ].filter(Boolean).length;
+
+  const visible = useMemo(() => {
+    if (filterIssue) return [];
+    const searchTerm = search.trim().toLowerCase();
+    const minimum = minimumAmount ? Number(minimumAmount) : null;
+    const maximum = maximumAmount ? Number(maximumAmount) : null;
+
+    return transactions.filter((transaction) => {
+      const amount = Number(transaction.amount);
+      return (
+        transaction.transaction_date.startsWith(month) &&
+        `${transaction.category} ${transaction.description} ${transaction.kind}`
+          .toLowerCase()
+          .includes(searchTerm) &&
+        (kindFilter === 'all' || transaction.kind === kindFilter) &&
+        (categoryFilter === 'all' ||
+          transaction.category === categoryFilter) &&
+        (!dateFrom || transaction.transaction_date >= dateFrom) &&
+        (!dateTo || transaction.transaction_date <= dateTo) &&
+        (minimum === null || amount >= minimum) &&
+        (maximum === null || amount <= maximum)
+      );
+    });
+  }, [
+    transactions,
+    month,
+    search,
+    kindFilter,
+    categoryFilter,
+    dateFrom,
+    dateTo,
+    minimumAmount,
+    maximumAmount,
+    filterIssue,
+  ]);
 
   const closeEditor = () => setEditor(undefined);
 
@@ -146,7 +233,8 @@ export default function TransactionsScreen() {
   const exportTransactions = async () => {
     if (exporting || !userId) return;
     setExporting(true);
-    setError('');
+    setCsvError('');
+    setCsvSuccess('');
 
     try {
       const allTransactions: Transaction[] = [];
@@ -167,7 +255,7 @@ export default function TransactionsScreen() {
       }
 
       if (allTransactions.length === 0) {
-        setError('There are no transactions to export yet.');
+        setCsvError('There are no transactions to export yet.');
         return;
       }
 
@@ -180,12 +268,66 @@ export default function TransactionsScreen() {
         UTI: 'public.comma-separated-values-text',
       });
     } catch (err) {
-      setError(
+      setCsvError(
         err instanceof Error ? err.message : 'Could not export transactions.'
       );
     } finally {
       setExporting(false);
     }
+  };
+
+  const importTransactions = async () => {
+    if (importing || exporting || !userId) return;
+    setImporting(true);
+    setCsvError('');
+    setCsvSuccess('');
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const file = new File(result.assets[0].uri);
+      if (file.size > 1024 * 1024) {
+        throw new Error('CSV files must be 1 MB or smaller.');
+      }
+
+      const parsed = parseTransactionsCsv(await file.text());
+      if (parsed.error) throw new Error(parsed.error);
+
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert(
+          parsed.transactions.map((transaction) => ({
+            ...transaction,
+            user_id: userId,
+          }))
+        );
+      if (insertError) throw insertError;
+
+      setCsvSuccess(
+        `Imported ${parsed.transactions.length} transaction${parsed.transactions.length === 1 ? '' : 's'}.`
+      );
+      await loadTransactions();
+    } catch (err) {
+      setCsvError(
+        err instanceof Error ? err.message : 'Could not import transactions.'
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const clearAdvancedFilters = () => {
+    setKindFilter('all');
+    setCategoryFilter('all');
+    setDateFrom('');
+    setDateTo('');
+    setMinimumAmount('');
+    setMaximumAmount('');
   };
 
   const deleteTransaction = (transaction: Transaction) => {
@@ -255,19 +397,183 @@ export default function TransactionsScreen() {
           placeholder="Description, category, type"
           autoCapitalize="none"
         />
+        <FinanceCard theme={theme}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityState={{ expanded: filtersExpanded }}
+            onPress={() => setFiltersExpanded((expanded) => !expanded)}
+            style={ui.rowSpace}
+          >
+            <View>
+              <Text style={[ui.heading, { color: theme.text, fontSize: 16 }]}>
+                More filters
+              </Text>
+              <Text style={[ui.muted, { color: theme.textSecondary }]}>
+                {activeFilterCount
+                  ? `${activeFilterCount} active`
+                  : 'Type, category, date, and amount'}
+              </Text>
+            </View>
+            <Text style={{ color: theme.primary, fontSize: 20, fontWeight: '800' }}>
+              {filtersExpanded ? '−' : '+'}
+            </Text>
+          </TouchableOpacity>
+          {filtersExpanded ? (
+            <Animated.View
+              entering={FadeInDown.duration(180).reduceMotion(ReduceMotion.System)}
+              exiting={FadeOutUp.duration(140).reduceMotion(ReduceMotion.System)}
+              style={filterStyles.content}
+            >
+              <Text style={[filterStyles.label, { color: theme.text }]}>
+                Type
+              </Text>
+              <View style={filterStyles.chips}>
+                {(['all', 'income', 'expense'] as const).map((choice) => (
+                  <FilterChip
+                    key={choice}
+                    label={choice === 'all' ? 'All types' : choice}
+                    selected={kindFilter === choice}
+                    onPress={() => {
+                      setKindFilter(choice);
+                      setCategoryFilter('all');
+                    }}
+                    theme={theme}
+                  />
+                ))}
+              </View>
+
+              <Text style={[filterStyles.label, { color: theme.text }]}>
+                Category
+              </Text>
+              <View style={filterStyles.chips}>
+                <FilterChip
+                  label="All categories"
+                  selected={categoryFilter === 'all'}
+                  onPress={() => setCategoryFilter('all')}
+                  theme={theme}
+                />
+                {(kindFilter === 'income'
+                  ? CATEGORIES.income
+                  : kindFilter === 'expense'
+                    ? CATEGORIES.expense
+                    : [...new Set([...CATEGORIES.income, ...CATEGORIES.expense])]
+                ).map((category) => (
+                  <FilterChip
+                    key={category}
+                    label={category}
+                    selected={categoryFilter === category}
+                    onPress={() => setCategoryFilter(category)}
+                    theme={theme}
+                  />
+                ))}
+              </View>
+
+              <View style={filterStyles.fieldRow}>
+                <View style={filterStyles.field}>
+                  <FinanceField
+                    label="From date"
+                    theme={theme}
+                    value={dateFrom}
+                    onChangeText={setDateFrom}
+                    placeholder="YYYY-MM-DD"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={10}
+                  />
+                </View>
+                <View style={filterStyles.field}>
+                  <FinanceField
+                    label="To date"
+                    theme={theme}
+                    value={dateTo}
+                    onChangeText={setDateTo}
+                    placeholder="YYYY-MM-DD"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={10}
+                  />
+                </View>
+              </View>
+              <View style={filterStyles.fieldRow}>
+                <View style={filterStyles.field}>
+                  <FinanceField
+                    label="Minimum amount (CAD)"
+                    theme={theme}
+                    value={minimumAmount}
+                    onChangeText={setMinimumAmount}
+                    placeholder="No minimum"
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={filterStyles.field}>
+                  <FinanceField
+                    label="Maximum amount (CAD)"
+                    theme={theme}
+                    value={maximumAmount}
+                    onChangeText={setMaximumAmount}
+                    placeholder="No maximum"
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+              {filterIssue ? (
+                <Text style={{ color: theme.expense, lineHeight: 20 }}>
+                  {filterIssue}
+                </Text>
+              ) : null}
+              {activeFilterCount ? (
+                <FinanceButton
+                  title="Clear filters"
+                  theme={theme}
+                  variant="secondary"
+                  onPress={clearAdvancedFilters}
+                />
+              ) : null}
+            </Animated.View>
+          ) : null}
+        </FinanceCard>
         <FinanceButton
           title="Add transaction"
           theme={theme}
           onPress={() => setEditor(null)}
           disabled={!userId}
         />
-        <FinanceButton
-          title={exporting ? 'Preparing CSV…' : 'Export all transactions (CSV)'}
-          theme={theme}
-          variant="secondary"
-          onPress={() => void exportTransactions()}
-          disabled={!userId || exporting}
-        />
+        <FinanceCard theme={theme}>
+          <Text style={[ui.heading, { color: theme.text, fontSize: 16 }]}>
+            CSV tools
+          </Text>
+          <Text style={[ui.muted, { color: theme.textSecondary }]}>
+            Import a Pocket Ledger CSV or export a copy of all your transactions.
+          </Text>
+          <View style={ui.row}>
+            <View style={{ flex: 1 }}>
+              <FinanceButton
+                title={importing ? 'Importing…' : 'Import CSV'}
+                theme={theme}
+                variant="secondary"
+                onPress={() => void importTransactions()}
+                disabled={!userId || importing || exporting}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FinanceButton
+                title={exporting ? 'Exporting…' : 'Export CSV'}
+                theme={theme}
+                variant="secondary"
+                onPress={() => void exportTransactions()}
+                disabled={!userId || exporting || importing}
+              />
+            </View>
+          </View>
+          {csvError ? (
+            <Text accessibilityRole="alert" style={{ color: theme.expense, lineHeight: 20 }}>
+              {csvError}
+            </Text>
+          ) : null}
+          {csvSuccess ? (
+            <Text accessibilityRole="text" style={{ color: theme.income, lineHeight: 20 }}>
+              {csvSuccess}
+            </Text>
+          ) : null}
+        </FinanceCard>
 
         {loading ? (
           <ActivityIndicator color={theme.primary} />
@@ -298,7 +604,9 @@ export default function TransactionsScreen() {
               {hasMore ? '. Load more to search older records.' : '.'}
             </Text>
             <Text style={[ui.empty, { color: theme.textSecondary }]}>
-              No transactions found for this month and search.
+              {filterIssue
+                ? 'Fix the filters above to see matching transactions.'
+                : 'No transactions match these filters.'}
             </Text>
             {hasMore ? (
               <FinanceButton
@@ -315,8 +623,14 @@ export default function TransactionsScreen() {
               Showing {visible.length} matches from {transactions.length}{' '}
               loaded{hasMore ? '. Load more to search older records.' : '.'}
             </Text>
-            {visible.map((transaction) => (
-              <FinanceCard key={transaction.id} theme={theme}>
+            {visible.map((transaction, index) => (
+              <Animated.View
+                key={transaction.id}
+                entering={FadeInDown.delay(Math.min(index * 25, 150))
+                  .duration(220)
+                  .reduceMotion(ReduceMotion.System)}
+              >
+              <FinanceCard theme={theme}>
                 <View style={ui.rowSpace}>
                   <View style={{ flex: 1, gap: 4 }}>
                     <Text style={[ui.heading, { color: theme.text }]}>
@@ -357,6 +671,7 @@ export default function TransactionsScreen() {
                   />
                 </View>
               </FinanceCard>
+              </Animated.View>
             ))}
             {hasMore ? (
               <FinanceButton
@@ -392,6 +707,58 @@ export default function TransactionsScreen() {
     </SafeAreaView>
   );
 }
+
+function FilterChip({
+  label,
+  selected,
+  onPress,
+  theme,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        filterStyles.chip,
+        {
+          backgroundColor: selected ? theme.primarySoft : theme.surfaceAlt,
+          borderColor: selected ? theme.primary : theme.border,
+          opacity: pressed ? 0.75 : 1,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          filterStyles.chipText,
+          { color: selected ? theme.primary : theme.textSecondary },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const filterStyles = StyleSheet.create({
+  content: { gap: 12, marginTop: 4 },
+  label: { fontSize: 13, fontWeight: '700', marginBottom: -4 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipText: { fontSize: 13, fontWeight: '600', textTransform: 'capitalize' },
+  fieldRow: { flexDirection: 'row', gap: 10 },
+  field: { flex: 1, minWidth: 0 },
+});
 
 function TransactionEditor({
   theme,
