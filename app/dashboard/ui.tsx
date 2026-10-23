@@ -38,6 +38,7 @@ import {
   Sparkles,
   Download,
   Upload,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useTheme } from "@/app/theme-provider";
 
@@ -177,6 +178,12 @@ export function Dashboard({
   const [budgets, setBudgets] = useState(initialBudgets);
   const [month, setMonth] = useState(monthNow());
   const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | "income" | "expense">("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [maximumAmount, setMaximumAmount] = useState("");
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
@@ -266,14 +273,46 @@ export function Dashboard({
   const visible = useMemo(
     () =>
       transactions.filter(
-        (t) =>
-          t.transaction_date.startsWith(month) &&
-          `${t.category} ${t.description} ${t.kind}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
+        (transaction) => {
+          const amount = Number(transaction.amount);
+          return (
+            transaction.transaction_date.startsWith(month) &&
+            `${transaction.category} ${transaction.description} ${transaction.kind}`
+              .toLowerCase()
+              .includes(query.trim().toLowerCase()) &&
+            (kindFilter === "all" || transaction.kind === kindFilter) &&
+            (categoryFilter === "all" || transaction.category === categoryFilter) &&
+            (!dateFrom || transaction.transaction_date >= dateFrom) &&
+            (!dateTo || transaction.transaction_date <= dateTo) &&
+            (!minimumAmount || amount >= Number(minimumAmount)) &&
+            (!maximumAmount || amount <= Number(maximumAmount))
+          );
+        },
       ),
-    [transactions, month, query],
+    [transactions, month, query, kindFilter, categoryFilter, dateFrom, dateTo, minimumAmount, maximumAmount],
   );
+  const transactionCategories = useMemo(
+    () => [...new Set(transactions.map((transaction) => transaction.category))].sort(),
+    [transactions],
+  );
+
+  const activeFilterCount = [
+    kindFilter !== "all",
+    categoryFilter !== "all",
+    Boolean(dateFrom),
+    Boolean(dateTo),
+    Boolean(minimumAmount),
+    Boolean(maximumAmount),
+  ].filter(Boolean).length;
+
+  function clearAdvancedFilters() {
+    setKindFilter("all");
+    setCategoryFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setMinimumAmount("");
+    setMaximumAmount("");
+  }
 
   const income = visible
     .filter((t) => t.kind === "income")
@@ -742,6 +781,107 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               />
             </div>
           </div>
+
+          <details className={`mb-5 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
+              <SlidersHorizontal size={16} />
+              More filters
+              {activeFilterCount > 0 && (
+                <span className={`rounded-full px-2 py-0.5 text-xs ${dark ? "bg-slate-700 text-slate-200" : "bg-indigo-50 text-indigo-700"}`}>
+                  {activeFilterCount} active
+                </span>
+              )}
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-kind-filter">Type</label>
+                <select
+                  className={field}
+                  id="transaction-kind-filter"
+                  value={kindFilter}
+                  onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}
+                >
+                  <option value="all">All types</option>
+                  <option value="income">Income</option>
+                  <option value="expense">Expense</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-category-filter">Category</label>
+                <select
+                  className={field}
+                  id="transaction-category-filter"
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                >
+                  <option value="all">All categories</option>
+                  {transactionCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-date-from">From date</label>
+                <input
+                  className={field}
+                  id="transaction-date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    const nextDateFrom = event.target.value;
+                    setDateFrom(nextDateFrom);
+                    if (dateTo && nextDateFrom > dateTo) setDateTo("");
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-date-to">To date</label>
+                <input
+                  className={field}
+                  id="transaction-date-to"
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(event) => setDateTo(event.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-minimum-amount">Minimum amount (CAD)</label>
+                <input
+                  className={field}
+                  id="transaction-minimum-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="No minimum"
+                  value={minimumAmount}
+                  onChange={(event) => setMinimumAmount(event.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-maximum-amount">Maximum amount (CAD)</label>
+                <input
+                  className={field}
+                  id="transaction-maximum-amount"
+                  type="number"
+                  min={minimumAmount || "0"}
+                  step="0.01"
+                  placeholder="No maximum"
+                  value={maximumAmount}
+                  onChange={(event) => setMaximumAmount(event.target.value)}
+                />
+              </div>
+            </div>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                className={`${secondaryButton} mt-4`}
+                onClick={clearAdvancedFilters}
+              >
+                Clear filters
+              </button>
+            )}
+          </details>
 
           <details
             ref={csvToolsRef}
