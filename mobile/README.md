@@ -28,6 +28,7 @@ In the output, you'll find options to open the app in a
 The mobile app includes the desktop dashboard's main features:
 
 - Monthly income, expenses, net and projected balances, and spending insights
+- Month-over-month income, expense, and net-balance comparisons
 - Search, add, edit, and delete transactions; filter by type, category, date,
   and amount
 - Import and export transactions as validated CSV files

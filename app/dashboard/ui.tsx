@@ -62,6 +62,36 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function previousMonth(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(year, monthNumber - 2, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function totalsForMonth(transactions: Transaction[], month: string) {
+  return transactions.reduce(
+    (totals, transaction) => {
+      if (
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) ||
+        !transaction.transaction_date.startsWith(month)
+      ) {
+        return totals;
+      }
+      const amount = Number(transaction.amount);
+      if (transaction.kind === "income") totals.income += amount;
+      if (transaction.kind === "expense") totals.expenses += amount;
+      return totals;
+    },
+    { income: 0, expenses: 0 },
+  );
+}
+
+function describeMonthChange(current: number, previous: number) {
+  const difference = current - previous;
+  if (difference === 0) return "No change from last month";
+  return `${difference > 0 ? "Up" : "Down"} ${money(Math.abs(difference))} vs last month`;
+}
+
 function monthNow() {
   return today().slice(0, 7);
 }
@@ -325,6 +355,16 @@ export function Dashboard({
 
   const balance = income - expenses;
   const projectedBalance = balance + projectedRecurringTotal(recurring, month);
+  const validSelectedMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const comparisonMonth = validSelectedMonth ? previousMonth(month) : "";
+  const comparisonMonthLabel = comparisonMonth
+    ? new Date(`${comparisonMonth}-15T12:00:00`).toLocaleDateString("en-CA", {
+        month: "long",
+        year: "numeric",
+      })
+    : "";
+  const currentMonthTotals = totalsForMonth(transactions, month);
+  const previousMonthTotals = totalsForMonth(transactions, comparisonMonth);
 
   const expensesByCategory = visible.reduce<Record<string, number>>((totals, t) => {
     if (t.kind === "expense") {
@@ -450,6 +490,52 @@ setTransactions((old) => old.filter((t) => t.id !== id));
           <SummaryCard title="Expenses" amount={expenses} icon={<ArrowUpRight size={21} />} tone="rose" dark={dark} />
           <SummaryCard title="Net balance" amount={balance} icon={<Wallet size={21} />} tone="indigo" dark={dark} />
           <SummaryCard title="Projected balance" amount={projectedBalance} icon={<TrendingUp size={21} />} tone="violet" dark={dark} />
+        </section>
+
+        <section className={panelClass}>
+          <div className="mb-4">
+            <h2 className="text-lg font-bold tracking-tight">Month-over-month</h2>
+            <p className={`mt-1 text-sm ${textMuted}`}>
+              {comparisonMonth
+                ? `${monthLabel} compared with ${comparisonMonthLabel}. Full-month totals; transaction filters don&apos;t affect this comparison.`
+                : "Choose a valid month to compare monthly totals."}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Income",
+                current: currentMonthTotals.income,
+                previous: previousMonthTotals.income,
+                color: dark ? "text-emerald-300" : "text-emerald-700",
+              },
+              {
+                label: "Expenses",
+                current: currentMonthTotals.expenses,
+                previous: previousMonthTotals.expenses,
+                color: dark ? "text-rose-300" : "text-rose-700",
+              },
+              {
+                label: "Net balance",
+                current: currentMonthTotals.income - currentMonthTotals.expenses,
+                previous: previousMonthTotals.income - previousMonthTotals.expenses,
+                color: dark ? "text-indigo-300" : "text-indigo-700",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`rounded-2xl border p-4 ${dark ? "border-slate-700 bg-slate-800/60" : "border-slate-100 bg-slate-50/70"}`}
+              >
+                <p className={`text-sm font-semibold ${textMuted}`}>{item.label}</p>
+                <p className={`mt-2 text-xl font-extrabold ${item.color}`}>
+                  {money(item.current)}
+                </p>
+                <p className={`mt-1 text-xs ${textMuted}`}>
+                  {describeMonthChange(item.current, item.previous)}
+                </p>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* Spending insights */}

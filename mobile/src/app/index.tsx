@@ -26,6 +26,7 @@ import {
   monthLabel,
   money,
   nextMonth,
+  previousMonth,
   projectedRecurringTotal,
   recentMonths,
   type RecurringTransaction,
@@ -34,8 +35,15 @@ import {
 import { supabase } from '../lib/supabase';
 import { useTheme, useThemeMode } from '@/hooks/use-theme';
 
+function describeMonthChange(current: number, previous: number) {
+  const difference = current - previous;
+  if (difference === 0) return 'No change from last month';
+  return `${difference > 0 ? 'Up' : 'Down'} ${money(Math.abs(difference))} vs last month`;
+}
+
 export default function HomeScreen() {
   const monthOptions = useMemo(() => recentMonths(6), []);
+  const transactionMonths = useMemo(() => recentMonths(7), []);
   const theme = useTheme();
   const { mode, setMode } = useThemeMode();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -85,8 +93,8 @@ export default function HomeScreen() {
       const [transactionData, recurringResult] = await Promise.all([
         (async () => {
           const allTransactions: Transaction[] = [];
-          const startDate = `${monthOptions[0]}-01`;
-          const endDate = `${nextMonth(monthOptions[monthOptions.length - 1])}-01`;
+          const startDate = `${transactionMonths[0]}-01`;
+          const endDate = `${nextMonth(transactionMonths[transactionMonths.length - 1])}-01`;
 
           for (let from = 0; ; from += 500) {
             const { data, error: queryError } = await supabase
@@ -136,7 +144,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [monthOptions]);
+  }, [transactionMonths]);
 
   const submitAuth = async () => {
     setAuthLoading(true);
@@ -306,6 +314,24 @@ export default function HomeScreen() {
     1,
     ...monthlyTrend.flatMap((item) => [item.income, item.expenses])
   );
+  const validSelectedMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const comparisonMonth = validSelectedMonth ? previousMonth(month) : '';
+  const comparisonAvailable =
+    validSelectedMonth &&
+    transactionMonths.includes(month) &&
+    transactionMonths.includes(comparisonMonth);
+  const previousMonthTransactions = comparisonMonth
+    ? transactions.filter((transaction) =>
+        transaction.transaction_date.startsWith(comparisonMonth)
+      )
+    : [];
+  const previousIncome = previousMonthTransactions
+    .filter(isIncome)
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+  const previousExpenses = previousMonthTransactions
+    .filter((item) => !isIncome(item))
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+  const previousBalance = previousIncome - previousExpenses;
 
   const signOut = () => {
     Alert.alert('Sign out?', 'You can sign in again at any time.', [
@@ -637,6 +663,57 @@ export default function HomeScreen() {
               </View>
             </View>
 
+            <View style={styles.comparisonCard}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Month-over-month</Text>
+                <Text style={styles.count}>
+                  {comparisonMonth ? `vs ${monthLabel(comparisonMonth)}` : 'Select a valid month'}
+                </Text>
+              </View>
+              {comparisonAvailable ? (
+                <>
+                  {[
+                    {
+                      label: 'Income',
+                      current: income,
+                      previous: previousIncome,
+                      color: theme.income,
+                    },
+                    {
+                      label: 'Expenses',
+                      current: expenses,
+                      previous: previousExpenses,
+                      color: theme.expense,
+                    },
+                    {
+                      label: 'Net balance',
+                      current: balance,
+                      previous: previousBalance,
+                      color: theme.primary,
+                    },
+                  ].map((item) => (
+                    <View key={item.label} style={styles.comparisonMetric}>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={styles.summaryLabel}>{item.label}</Text>
+                        <Text style={styles.comparisonChange}>
+                          {describeMonthChange(item.current, item.previous)}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[styles.comparisonValue, { color: item.color }]}
+                      >
+                        {money(item.current)}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.messageText}>
+                  Comparison is available for months in the six-month overview.
+                </Text>
+              )}
+            </View>
+
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Spending insights</Text>
               <Text style={styles.count}>Top categories</Text>
@@ -849,6 +926,32 @@ const createStyles = (theme: ThemeColors) =>
       borderColor: theme.border,
       padding: 16,
       marginBottom: 24,
+    },
+    comparisonCard: {
+      backgroundColor: theme.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+      padding: 16,
+      marginBottom: 30,
+    },
+    comparisonMetric: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    comparisonChange: {
+      color: theme.textSecondary,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    comparisonValue: {
+      fontSize: 15,
+      fontWeight: '800',
+      textAlign: 'right',
     },
     chartLegend: {
       flexDirection: 'row',

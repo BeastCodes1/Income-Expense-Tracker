@@ -83,6 +83,12 @@ export function nextMonth(month: string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+export function previousMonth(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const date = new Date(year, monthNumber - 2, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function transactionsToCsv(transactions: Transaction[]) {
   const escape = (value: string | number) =>
     `"${String(value).replace(/"/g, '""')}"`;
