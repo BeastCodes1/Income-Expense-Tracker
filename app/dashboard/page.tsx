@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/actions";
 import { Dashboard } from "@/app/dashboard/ui";
+import { SessionTimeout } from "@/app/dashboard/session-timeout";
 import { Wallet, LogOut } from "lucide-react";
 
 export type Transaction = {
@@ -73,6 +74,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="shell py-7 md:py-10">
+      <SessionTimeout />
       <header className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-indigo-600 p-3 text-white"><Wallet size={23} /></div>

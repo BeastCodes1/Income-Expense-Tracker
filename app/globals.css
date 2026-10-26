@@ -247,6 +247,21 @@ details[open] > .disclosure-summary .disclosure-chevron { transform: rotate(180d
   transform: scale(.98);
 }
 
+.dashboard-page-enter {
+  animation: dashboard-page-enter 420ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.dashboard-content-enter > * {
+  animation: dashboard-section-enter 380ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.dashboard-content-enter > :nth-child(1) { animation-delay: 50ms; }
+.dashboard-content-enter > :nth-child(2) { animation-delay: 100ms; }
+.dashboard-content-enter > :nth-child(3) { animation-delay: 150ms; }
+.dashboard-content-enter > :nth-child(4) { animation-delay: 200ms; }
+.dashboard-content-enter > :nth-child(5) { animation-delay: 250ms; }
+.dashboard-content-enter > :nth-child(n + 6) { animation-delay: 300ms; }
+
 .animated-presence.motion-enter {
   animation: panel-enter 180ms cubic-bezier(.2, .75, .25, 1) both;
 }
@@ -320,6 +335,16 @@ details[open] > .disclosure-summary .disclosure-chevron { transform: rotate(180d
 @keyframes auth-card-pop {
   from { opacity: 0; transform: translateY(16px) scale(.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dashboard-page-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dashboard-section-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 640px) {

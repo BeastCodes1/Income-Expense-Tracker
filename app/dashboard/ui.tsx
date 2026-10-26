@@ -448,8 +448,8 @@ setTransactions((old) => old.filter((t) => t.id !== id));
     : "border-b border-slate-100 last:border-0";
 
   return (
-    <div className={`dashboard-theme ${dark ? "theme-dark" : ""} ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
-      <div className="mx-auto max-w-7xl space-y-7">
+    <div className={`dashboard-theme dashboard-page-enter ${dark ? "theme-dark" : ""} ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
+      <div className="dashboard-content-enter mx-auto max-w-7xl space-y-7">
 
         {/* Dashboard heading */}
         <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
