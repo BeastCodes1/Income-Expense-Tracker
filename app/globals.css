@@ -196,6 +196,31 @@ html[data-theme="dark"] [class~="text-amber-700"] { color: #fde68a; }
   transform: scale(.98);
 }
 
+.search-scope {
+  display: inline-flex;
+  gap: 4px;
+  width: 100%;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.search-scope button {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.search-scope button[aria-pressed="true"] {
+  background: #4f46e5;
+  color: #fff;
+}
+
 .disclosure-summary {
   min-height: 24px;
   border-radius: 8px;

@@ -12,6 +12,8 @@ import {
   deleteBudget,
   exportTransactionsCsv,
   importTransactionsCsv,
+  restoreTransaction,
+  deleteTransactions,
   type ActionState,
 } from "@/app/actions";
 import type {
@@ -40,6 +42,8 @@ import {
   Upload,
   SlidersHorizontal,
   ChevronDown,
+  Copy,
+  Undo2,
 } from "lucide-react";
 import { useTheme } from "@/app/theme-provider";
 
@@ -50,6 +54,10 @@ const CATEGORIES = {
     "Health", "Entertainment", "Education", "Travel", "Other",
   ],
 };
+
+// Keeps the DOM small when a search spans every month. The header and the note under
+// the list say when results were cut, so nothing is silently hidden.
+const SEARCH_RESULT_LIMIT = 200;
 
 const money = (amount: number) =>
   new Intl.NumberFormat("en-CA", {
@@ -223,6 +231,7 @@ export function Dashboard({
   const [budgets, setBudgets] = useState(initialBudgets);
   const [month, setMonth] = useState(monthNow());
   const [query, setQuery] = useState("");
+  const [searchAllMonths, setSearchAllMonths] = useState(false);
   const [kindFilter, setKindFilter] = useState<"all" | "income" | "expense">("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -231,6 +240,12 @@ export function Dashboard({
   const [maximumAmount, setMaximumAmount] = useState("");
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [duplicateMode, setDuplicateMode] = useState(false);
+  const [deleted, setDeleted] = useState<Transaction | null>(null);
+  const undoTimer = useRef<number | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [drilldown, setDrilldown] = useState<string | null>(null);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [showRecurringForm, setShowRecurringForm] = useState(false);
@@ -321,7 +336,7 @@ export function Dashboard({
         (transaction) => {
           const amount = Number(transaction.amount);
           return (
-            transaction.transaction_date.startsWith(month) &&
+            (searchAllMonths || transaction.transaction_date.startsWith(month)) &&
             `${transaction.category} ${transaction.description} ${transaction.kind}`
               .toLowerCase()
               .includes(query.trim().toLowerCase()) &&
@@ -334,8 +349,22 @@ export function Dashboard({
           );
         },
       ),
-    [transactions, month, query, kindFilter, categoryFilter, dateFrom, dateTo, minimumAmount, maximumAmount],
+    [transactions, month, searchAllMonths, query, kindFilter, categoryFilter, dateFrom, dateTo, minimumAmount, maximumAmount],
   );
+  const shown = visible.slice(0, SEARCH_RESULT_LIMIT);
+  const allShownSelected = shown.length > 0 && shown.every((t) => selected.has(t.id));
+
+  function toggleShownSelection() {
+    setSelected((old) => {
+      const next = new Set(old);
+      if (shown.every((t) => old.has(t.id))) {
+        for (const t of shown) next.delete(t.id);
+      } else {
+        for (const t of shown) next.add(t.id);
+      }
+      return next;
+    });
+  }
   const monthTransactions = useMemo(
     () => transactions.filter((transaction) => transaction.transaction_date.startsWith(month)),
     [transactions, month],
@@ -381,6 +410,10 @@ export function Dashboard({
     : "";
   const currentMonthTotals = monthTotals;
   const previousMonthTotals = totalsForMonth(transactions, comparisonMonth);
+  const lastYearTotals = totalsForMonth(
+    transactions,
+    validSelectedMonth ? shiftMonth(month, -12) : "",
+  );
 
   const trend = useMemo(() => {
     if (!validSelectedMonth) return [];
@@ -401,6 +434,44 @@ export function Dashboard({
   );
   const trendIsEmpty = trend.every((entry) => entry.income === 0 && entry.expenses === 0);
 
+  const ytdTotals = useMemo(() => {
+    if (!validSelectedMonth) return { income: 0, expenses: 0 };
+    const year = month.slice(0, 4);
+
+    return transactions.reduce(
+      (totals, transaction) => {
+        const transactionMonth = transaction.transaction_date.slice(0, 7);
+        if (!transaction.transaction_date.startsWith(year) || transactionMonth > month) {
+          return totals;
+        }
+        if (transaction.kind === "income") totals.income += Number(transaction.amount);
+        else totals.expenses += Number(transaction.amount);
+        return totals;
+      },
+      { income: 0, expenses: 0 },
+    );
+  }, [transactions, month, validSelectedMonth]);
+  const ytdNet = ytdTotals.income - ytdTotals.expenses;
+  const savingsRate = ytdTotals.income > 0 ? (ytdNet / ytdTotals.income) * 100 : null;
+  const yearLabel = validSelectedMonth ? month.slice(0, 4) : "";
+
+  const categoryTrend = useMemo(() => {
+    if (!drilldown) return [];
+    return trend.map((entry) => ({
+      month: entry.month,
+      total: transactions.reduce(
+        (sum, transaction) =>
+          transaction.kind === "expense" &&
+          transaction.category === drilldown &&
+          transaction.transaction_date.startsWith(entry.month)
+            ? sum + Number(transaction.amount)
+            : sum,
+        0,
+      ),
+    }));
+  }, [drilldown, trend, transactions]);
+  const categoryTrendMax = Math.max(...categoryTrend.map((entry) => entry.total), 1);
+
   const expensesByCategory = monthTransactions.reduce<Record<string, number>>((totals, t) => {
     if (t.kind === "expense") {
       totals[t.category] = (totals[t.category] ?? 0) + Number(t.amount);
@@ -419,16 +490,41 @@ export function Dashboard({
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
+  const quickAdds = useMemo(() => {
+    const counts = new Map<string, { transaction: Transaction; count: number }>();
+    for (const transaction of transactions) {
+      const key = `${transaction.kind}|${transaction.category}|${Number(transaction.amount).toFixed(2)}|${transaction.description}`;
+      const entry = counts.get(key);
+      if (entry) entry.count += 1;
+      else counts.set(key, { transaction, count: 1 });
+    }
+
+    return [...counts.values()]
+      .filter((entry) => entry.count > 1)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+      .map((entry) => entry.transaction);
+  }, [transactions]);
+
   const monthLabel = new Date(`${month}-15T12:00:00`).toLocaleDateString(
     "en-CA",
     { month: "long", year: "numeric" },
   );
 
-  async function removeTransaction(id: string) {
-    if (!window.confirm("Delete this transaction? This cannot be undone.")) return;
-    setBusyId(id);
+  useEffect(() => () => {
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+  }, []);
+
+  // Never leave rows selected that the new month hides from view.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [month]);
+
+  async function removeTransaction(transaction: Transaction) {
+    if (!window.confirm("Delete this transaction?")) return;
+    setBusyId(transaction.id);
     const fd = new FormData();
-    fd.set("id", id);
+    fd.set("id", transaction.id);
 
     try {
       const result = await deleteTransaction(fd);
@@ -436,12 +532,85 @@ export function Dashboard({
         window.alert(result.error);
         return;
       }
-      setTransactions((old) => old.filter((t) => t.id !== id));
+      setTransactions((old) => old.filter((t) => t.id !== transaction.id));
+      setSelected((old) => {
+        const next = new Set(old);
+        next.delete(transaction.id);
+        return next;
+      });
+      setDeleted(transaction);
+      if (undoTimer.current) window.clearTimeout(undoTimer.current);
+      undoTimer.current = window.setTimeout(() => setDeleted(null), 12000);
     } catch {
       window.alert("Could not delete the transaction. Please try again.");
     } finally {
       setBusyId(null);
     }
+  }
+
+  async function undoDelete() {
+    if (!deleted) return;
+    const fd = new FormData();
+    fd.set("id", deleted.id);
+    fd.set("kind", deleted.kind);
+    fd.set("amount", String(deleted.amount));
+    fd.set("category", deleted.category);
+    fd.set("description", deleted.description);
+    fd.set("transaction_date", deleted.transaction_date);
+    fd.set("created_at", deleted.created_at);
+
+    const result = await restoreTransaction(fd);
+    if (result?.error) {
+      window.alert(result.error);
+      return;
+    }
+
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setTransactions((old) => [deleted, ...old]);
+    setDeleted(null);
+    refresh();
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((old) => {
+      const next = new Set(old);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteSelected() {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} selected transaction${selected.size === 1 ? "" : "s"}? This cannot be undone.`)) {
+      return;
+    }
+
+    setBulkBusy(true);
+    try {
+      const fd = new FormData();
+      fd.set("ids", JSON.stringify([...selected]));
+      const result = await deleteTransactions(fd);
+
+      if (result?.error) {
+        window.alert(result.error);
+        return;
+      }
+
+      setTransactions((old) => old.filter((t) => !selected.has(t.id)));
+      setSelected(new Set());
+      setDeleted(null);
+    } catch {
+      window.alert("Could not delete the selected transactions.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function openDuplicate(transaction: Transaction) {
+    setEditing({ ...transaction, id: "", transaction_date: today() });
+    setDuplicateMode(true);
+    setShowTransactionForm(true);
   }
 
   async function removeRecurring(id: string) {
@@ -517,6 +686,7 @@ export function Dashboard({
               type="button"
               className={primaryButton}
               onClick={() => {
+                setDuplicateMode(false);
                 setEditing(null);
                 setShowTransactionForm(true);
               }}
@@ -549,18 +719,21 @@ export function Dashboard({
                 label: "Income",
                 current: currentMonthTotals.income,
                 previous: previousMonthTotals.income,
+                lastYear: lastYearTotals.income,
                 color: dark ? "text-emerald-300" : "text-emerald-700",
               },
               {
                 label: "Expenses",
                 current: currentMonthTotals.expenses,
                 previous: previousMonthTotals.expenses,
+                lastYear: lastYearTotals.expenses,
                 color: dark ? "text-rose-300" : "text-rose-700",
               },
               {
                 label: "Net balance",
                 current: currentMonthTotals.income - currentMonthTotals.expenses,
                 previous: previousMonthTotals.income - previousMonthTotals.expenses,
+                lastYear: lastYearTotals.income - lastYearTotals.expenses,
                 color: dark ? "text-indigo-300" : "text-indigo-700",
               },
             ].map((item) => (
@@ -575,8 +748,39 @@ export function Dashboard({
                 <p className={`mt-1 text-xs ${textMuted}`}>
                   {describeMonthChange(item.current, item.previous)}
                 </p>
+                <p className={`mt-1 text-xs ${textMuted}`}>
+                  Last year: {money(item.lastYear)}
+                </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Year to date */}
+        <section className={panelClass}>
+          <div className="mb-4">
+            <h2 className="text-lg font-bold tracking-tight">This year at a glance</h2>
+            <p className={`mt-1 text-sm ${textMuted}`}>
+              {yearLabel
+                ? `January to ${monthLabel}, using every recorded transaction.`
+                : "Choose a valid month to see year-to-date totals."}
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MiniStat label="Income this year" value={money(ytdTotals.income)} dark={dark} />
+            <MiniStat label="Expenses this year" value={money(ytdTotals.expenses)} dark={dark} />
+            <MiniStat
+              label="Net saved"
+              value={money(ytdNet)}
+              dark={dark}
+              valueClass={ytdNet < 0 ? "text-rose-500" : "text-emerald-500"}
+            />
+            <MiniStat
+              label="Savings rate"
+              value={savingsRate === null ? "—" : `${Math.round(savingsRate)}%`}
+              dark={dark}
+              valueClass={savingsRate === null ? "" : savingsRate < 0 ? "text-rose-500" : "text-emerald-500"}
+            />
           </div>
         </section>
 
@@ -661,8 +865,16 @@ export function Dashboard({
             <div className="space-y-5">
               {topCategories.map(([category, amount]) => {
                 const percent = expenses > 0 ? (amount / expenses) * 100 : 0;
+                const active = drilldown === category;
+
                 return (
-                  <div key={category}>
+                  <button
+                    key={category}
+                    type="button"
+                    aria-expanded={active}
+                    onClick={() => setDrilldown(active ? null : category)}
+                    className={`w-full rounded-2xl px-2 py-2 text-left transition ${active ? (dark ? "bg-slate-800" : "bg-indigo-50/80") : ""}`}
+                  >
                     <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                       <span className="font-semibold">{category}</span>
                       <span className={textMuted}>
@@ -675,9 +887,51 @@ export function Dashboard({
                         style={{ width: `${Math.min(percent, 100)}%` }}
                       />
                     </div>
-                  </div>
+                    <span className={`mt-2 block text-xs ${textMuted}`}>
+                      {active ? "Hide six-month trend" : "Show six-month trend"}
+                    </span>
+                  </button>
                 );
               })}
+
+              {drilldown && (
+                <div className={`rounded-2xl border p-4 ${dark ? "border-slate-700 bg-slate-800/60" : "border-slate-100 bg-slate-50/70"}`}>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <p className="font-bold">{drilldown} · six-month trend</p>
+                    <button
+                      type="button"
+                      className={secondaryButton}
+                      aria-label="Close category trend"
+                      onClick={() => setDrilldown(null)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-6 gap-1.5 sm:gap-3">
+                    {categoryTrend.map((entry) => {
+                      const label = new Date(`${entry.month}-15T12:00:00`).toLocaleDateString("en-CA", { month: "short" });
+
+                      return (
+                        <div
+                          key={entry.month}
+                          role="group"
+                          aria-label={`${label}: ${money(entry.total)} on ${drilldown}`}
+                          className="flex flex-col items-center gap-2"
+                        >
+                          <div className="flex h-24 w-full items-end justify-center" aria-hidden="true">
+                            <div
+                              className="w-3 rounded-t-md bg-indigo-500 sm:w-4"
+                              style={{ height: `${Math.max((entry.total / categoryTrendMax) * 100, entry.total > 0 ? 3 : 0)}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-semibold ${textMuted}`}>{label}</span>
+                          <span className="text-[11px] font-bold">{compactMoney(entry.total)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -956,21 +1210,63 @@ export function Dashboard({
             <div>
               <h2 className="text-lg font-bold tracking-tight">Transactions</h2>
               <p className={`mt-1 text-sm ${textMuted}`}>
-                {activeFilterCount > 0 || query.trim()
-                  ? `${visible.length} of ${monthTransactions.length} records · ${monthLabel} · filters applied`
-                  : `${visible.length} record${visible.length === 1 ? "" : "s"} · ${monthLabel}`}
+                {searchAllMonths
+                  ? `${visible.length} match${visible.length === 1 ? "" : "es"} · all months${
+                      activeFilterCount > 0 || query.trim() ? " · filters applied" : ""
+                    }`
+                  : activeFilterCount > 0 || query.trim()
+                    ? `${visible.length} of ${monthTransactions.length} records · ${monthLabel} · filters applied`
+                    : `${visible.length} record${visible.length === 1 ? "" : "s"} · ${monthLabel}`}
               </p>
             </div>
-            <div className="relative w-full sm:max-w-xs">
-              <Search size={17} className={`absolute left-3 top-3 ${textMuted}`} />
-              <input
-                className={`${field} pl-9`}
-                placeholder="Search transactions..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+            <div className="w-full space-y-2 sm:max-w-xs">
+              <div className="relative">
+                <Search size={17} className={`absolute left-3 top-3 ${textMuted}`} />
+                <input
+                  className={`${field} pl-9`}
+                  placeholder="Search transactions..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <div
+                className="search-scope"
+                role="group"
+                aria-label="Search scope"
+              >
+                <button
+                  type="button"
+                  aria-pressed={!searchAllMonths}
+                  onClick={() => setSearchAllMonths(false)}
+                >
+                  This month
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={searchAllMonths}
+                  onClick={() => setSearchAllMonths(true)}
+                >
+                  All months
+                </button>
+              </div>
             </div>
           </div>
+
+          {quickAdds.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className={`text-xs font-semibold uppercase tracking-wide ${textMuted}`}>Quick add</span>
+              {quickAdds.map((entry) => (
+                <button
+                  key={`${entry.kind}-${entry.category}-${entry.amount}-${entry.description}`}
+                  type="button"
+                  onClick={() => openDuplicate(entry)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${dark ? "border-slate-700 hover:bg-slate-800" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                >
+                  {entry.description || entry.category} · {money(Number(entry.amount))}
+                </button>
+              ))}
+            </div>
+          )}
 
           <details className={`mb-5 rounded-2xl border p-4 ${dark ? "border-slate-700" : "border-slate-200"}`}>
             <summary className="disclosure-summary flex cursor-pointer list-none items-center gap-2 text-sm font-semibold">
@@ -1111,6 +1407,26 @@ export function Dashboard({
             {csvMessage.success && <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{csvMessage.success}</p>}
           </details>
 
+          {selected.size > 0 && (
+            <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3 text-sm ${dark ? "border-slate-700 bg-slate-800" : "border-indigo-200 bg-indigo-50"}`}>
+              <span className="font-semibold">{selected.size} selected</span>
+              <div className="flex gap-2">
+                <button type="button" className={secondaryButton} onClick={() => setSelected(new Set())} disabled={bulkBusy}>
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className={`${secondaryButton} text-rose-600`}
+                  onClick={() => void deleteSelected()}
+                  disabled={bulkBusy}
+                >
+                  {bulkBusy ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                  Delete selected
+                </button>
+              </div>
+            </div>
+          )}
+
           {visible.length === 0 ? (
             <div className="py-12 text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
@@ -1118,13 +1434,16 @@ export function Dashboard({
               </span>
               <h3 className="mt-4 font-bold">No transactions found</h3>
               <p className={`mt-2 text-sm ${textMuted}`}>
-                Try another month or search term, or add a transaction.
+                {searchAllMonths
+                  ? "Try a different search term, or clear your filters."
+                  : "Try another month or search term, or add a transaction."}
               </p>
               <button
                 type="button"
                 className={`${primaryButton} mt-4`}
                 onClick={() => {
-                  setEditing(null);
+                  setDuplicateMode(false);
+                setEditing(null);
                   setShowTransactionForm(true);
                 }}
               >
@@ -1134,12 +1453,19 @@ export function Dashboard({
           ) : (
             <>
               <div className="space-y-3 md:hidden">
-                {visible.map((t) => (
+                {shown.map((t) => (
                   <article
                     key={t.id}
                     className={`rounded-2xl border p-4 ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-indigo-600"
+                        aria-label={`Select ${t.description || t.category}`}
+                        checked={selected.has(t.id)}
+                        onChange={() => toggleSelected(t.id)}
+                      />
                       <div className="flex min-w-0 items-start gap-3">
                         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
                           {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
@@ -1167,6 +1493,7 @@ export function Dashboard({
                         className={secondaryButton}
                         aria-label={`Edit ${t.description || t.category}`}
                         onClick={() => {
+                          setDuplicateMode(false);
                           setEditing(t);
                           setShowTransactionForm(true);
                         }}
@@ -1176,9 +1503,17 @@ export function Dashboard({
                       <button
                         type="button"
                         className={secondaryButton}
+                        aria-label={`Duplicate ${t.description || t.category}`}
+                        onClick={() => openDuplicate(t)}
+                      >
+                        <Copy size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className={secondaryButton}
                         aria-label={`Delete ${t.description || t.category}`}
                         disabled={busyId === t.id}
-                        onClick={() => void removeTransaction(t.id)}
+                        onClick={() => void removeTransaction(t)}
                       >
                         {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -1190,6 +1525,15 @@ export function Dashboard({
                 <table className="w-full min-w-[650px] text-left text-sm">
                   <thead>
                     <tr className={textMuted}>
+                      <th className="w-8 pb-3 pr-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+                          aria-label="Select all shown transactions"
+                          checked={allShownSelected}
+                          onChange={toggleShownSelection}
+                        />
+                      </th>
                       <th className="pb-3 pr-4 font-medium">Transaction</th>
                       <th className="pb-3 pr-4 font-medium">Category</th>
                       <th className="pb-3 pr-4 font-medium">Date</th>
@@ -1198,8 +1542,17 @@ export function Dashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.map((t) => (
+                    {shown.map((t) => (
                       <tr key={t.id} className={tableRow}>
+                        <td className="py-4 pr-2">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 accent-indigo-600"
+                            aria-label={`Select ${t.description || t.category}`}
+                            checked={selected.has(t.id)}
+                            onChange={() => toggleSelected(t.id)}
+                          />
+                        </td>
                         <td className="py-4 pr-4">
                           <div className="flex items-center gap-3">
                             <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
@@ -1230,7 +1583,8 @@ export function Dashboard({
                             className={`${secondaryButton} mr-2`}
                             aria-label="Edit transaction"
                             onClick={() => {
-                              setEditing(t);
+                              setDuplicateMode(false);
+                          setEditing(t);
                               setShowTransactionForm(true);
                             }}
                           >
@@ -1238,10 +1592,18 @@ export function Dashboard({
                           </button>
                           <button
                             type="button"
+                            className={`${secondaryButton} mr-2`}
+                            aria-label="Duplicate transaction"
+                            onClick={() => openDuplicate(t)}
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
                             className={secondaryButton}
                             aria-label="Delete transaction"
                             disabled={busyId === t.id}
-                            onClick={() => void removeTransaction(t.id)}
+                            onClick={() => void removeTransaction(t)}
                           >
                             {busyId === t.id ? <LoaderCircle size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
@@ -1251,6 +1613,11 @@ export function Dashboard({
                   </tbody>
                 </table>
               </div>
+              {visible.length > shown.length && (
+                <p className={`mt-4 text-xs ${textMuted}`}>
+                  Showing the first {SEARCH_RESULT_LIMIT} of {visible.length} matches. Narrow the search to see the rest.
+                </p>
+              )}
             </>
           )}
         </section>
@@ -1263,8 +1630,9 @@ export function Dashboard({
 
       {showTransactionForm && (
         <TransactionForm
-          key={editing?.id ?? "new-transaction"}
+          key={editing ? `${editing.id || "copy"}-${duplicateMode ? "duplicate" : "edit"}` : "new-transaction"}
           transaction={editing}
+          duplicate={duplicateMode}
           dark={dark}
           onClose={() => setShowTransactionForm(false)}
           onSaved={(updated) => {
@@ -1276,6 +1644,30 @@ export function Dashboard({
             refresh();
           }}
         />
+      )}
+
+      {deleted && (
+        <div
+          role="status"
+          className="fixed bottom-24 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl"
+        >
+          <span>Transaction deleted.</span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 font-bold text-indigo-300 underline"
+            onClick={() => void undoDelete()}
+          >
+            <Undo2 size={15} /> Undo
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="rounded-lg p-1 text-slate-400 transition hover:text-white"
+            onClick={() => setDeleted(null)}
+          >
+            <X size={16} />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1502,11 +1894,13 @@ function RecurringForm({
 
 function TransactionForm({
   transaction,
+  duplicate,
   dark,
   onClose,
   onSaved,
 }: {
   transaction: Transaction | null;
+  duplicate: boolean;
   dark: boolean;
   onClose: () => void;
   onSaved: (t: Transaction) => void;
@@ -1582,9 +1976,11 @@ function TransactionForm({
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 id="transaction-title" className="text-xl font-black">
-              {transaction ? "Edit transaction" : "Add transaction"}
+              {duplicate ? "Duplicate transaction" : transaction ? "Edit transaction" : "Add transaction"}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">Enter the details below.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {duplicate ? "Saved as a new transaction, dated today." : "Enter the details below."}
+            </p>
           </div>
           <button type="button" className={secondaryButton} onClick={() => close()} disabled={pending || closing} aria-label="Close">
             <X size={18} />
@@ -1592,7 +1988,7 @@ function TransactionForm({
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          <input type="hidden" name="id" value={transaction?.id ?? ""} />
+          <input type="hidden" name="id" value={duplicate ? "" : transaction?.id ?? ""} />
           <input type="hidden" name="kind" value={kind} />
 
           <div>
@@ -1626,7 +2022,7 @@ function TransactionForm({
 
           <div>
             <label className="mb-1.5 block text-sm font-semibold" htmlFor="transaction-date">Date</label>
-            <input className={field} id="transaction-date" name="transaction_date" type="date" defaultValue={transaction?.transaction_date ?? today()} required />
+            <input className={field} id="transaction-date" name="transaction_date" type="date" defaultValue={duplicate ? today() : transaction?.transaction_date ?? today()} required />
           </div>
 
           {error && <p role="alert" className="rounded-xl bg-rose-100 p-3 text-sm text-rose-700">{error}</p>}
@@ -1635,7 +2031,7 @@ function TransactionForm({
             <button type="button" className={`${secondaryButton} flex-1`} onClick={() => close()} disabled={pending || closing}>Cancel</button>
             <button type="submit" className={`${primaryButton} flex-1`} disabled={pending}>
               {pending && <LoaderCircle size={16} className="animate-spin" />}
-              {pending ? "Saving..." : transaction ? "Save changes" : "Save transaction"}
+              {pending ? "Saving..." : duplicate ? "Save copy" : transaction ? "Save changes" : "Save transaction"}
             </button>
           </div>
         </form>

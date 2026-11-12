@@ -41,16 +41,42 @@ export type Budget = {
   updated_at: string;
 };
 
+// Supabase returns at most 1,000 rows per request by default, so a single unbounded
+// select would silently drop the oldest transactions (and skew every total computed
+// from them). Read the whole history a page at a time instead.
+const TRANSACTION_PAGE_SIZE = 1000;
+
+type TransactionRow = Omit<Transaction, "amount"> & { amount: number | string };
+
+async function loadAllTransactions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ rows: TransactionRow[]; error: unknown }> {
+  const rows: TransactionRow[] = [];
+
+  for (let from = 0; ; from += TRANSACTION_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id,user_id,kind,amount,category,description,transaction_date,created_at")
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + TRANSACTION_PAGE_SIZE - 1);
+
+    if (error) return { rows, error };
+
+    const page = (data ?? []) as TransactionRow[];
+    rows.push(...page);
+    if (page.length < TRANSACTION_PAGE_SIZE) return { rows, error: null };
+  }
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const [transactionResult, recurringResult, budgetResult] = await Promise.all([
-    supabase.from("transactions")
-      .select("id,user_id,kind,amount,category,description,transaction_date,created_at")
-      .order("transaction_date", { ascending: false })
-      .order("created_at", { ascending: false }),
+    loadAllTransactions(supabase),
     supabase.from("recurring_transactions")
       .select("id,user_id,kind,amount,category,description,frequency,start_date,next_due_date,end_date,active,created_at")
       .order("next_due_date", { ascending: true }),
@@ -59,7 +85,7 @@ export default async function DashboardPage() {
       .order("month", { ascending: false }),
   ]);
 
-  const transactions = (transactionResult.data ?? []).map((item) => ({
+  const transactions = transactionResult.rows.map((item) => ({
     ...item,
     amount: Number(item.amount),
   })) as Transaction[];
@@ -85,7 +111,7 @@ export default async function DashboardPage() {
           <form action={signOut}><button className="btn btn-light" type="submit"><LogOut size={16} /> Log out</button></form>
         </div>
       </header>
-      {transactionResult.error && <div className="card p-4 text-rose-700 mb-5">Could not load transactions. Check your Supabase setup.</div>}
+      {transactionResult.error ? <div className="card p-4 text-rose-700 mb-5">Could not load transactions. Check your Supabase setup.</div> : null}
       {recurringResult.error && <div className="card p-4 text-rose-700 mb-5">Could not load recurring schedules. Check that the recurring-transactions SQL setup is complete.</div>}
       {budgetResult.error && <div className="card p-4 text-amber-800 mb-5">Budgets are not available yet. Run <code>supabase/budgets.sql</code> in your Supabase SQL Editor, then refresh this page.</div>}
       <Dashboard initialTransactions={transactions} initialRecurring={recurringTransactions} initialBudgets={budgets} />

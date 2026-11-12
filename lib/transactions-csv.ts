@@ -1,3 +1,5 @@
+import { resolveCategory } from "./categorize";
+
 export type CsvTransaction = {
   kind: "income" | "expense";
   amount: number;
@@ -7,13 +9,12 @@ export type CsvTransaction = {
 };
 
 const HEADERS = ["Date", "Type", "Category", "Description", "Amount (CAD)"];
-const CATEGORIES = {
-  income: ["Salary", "Freelance", "Business", "Investment", "Gift", "Other"],
-  expense: [
-    "Housing", "Food", "Transport", "Bills", "Shopping",
-    "Health", "Entertainment", "Education", "Travel", "Other",
-  ],
+export type ParsedTransactionsCsv = {
+  transactions: CsvTransaction[];
+  error: string | null;
+  guessed: number;
 };
+
 const MAX_IMPORT_ROWS = 1000;
 const MAX_IMPORT_SIZE = 1024 * 1024;
 
@@ -99,17 +100,17 @@ function validDate(value: string) {
     new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 }
 
-export function parseTransactionsCsv(csv: string) {
+export function parseTransactionsCsv(csv: string): ParsedTransactionsCsv {
   if (csv.length > MAX_IMPORT_SIZE) {
-    return { transactions: [], error: "CSV files must be 1 MB or smaller." };
+    return { transactions: [], error: "CSV files must be 1 MB or smaller.", guessed: 0 };
   }
 
   const parsed = parseCsvRows(csv.replace(/^\uFEFF/, ""));
-  if (parsed.error) return { transactions: [], error: parsed.error };
+  if (parsed.error) return { transactions: [], error: parsed.error, guessed: 0 };
 
   const rows = parsed.rows.filter((row) => row.some((cell) => cell.trim() !== ""));
   if (rows.length < 2) {
-    return { transactions: [], error: "The CSV must include a header and at least one transaction." };
+    return { transactions: [], error: "The CSV must include a header and at least one transaction.", guessed: 0 };
   }
 
   const headers = rows[0].map((header) => header.trim().toLowerCase());
@@ -118,16 +119,18 @@ export function parseTransactionsCsv(csv: string) {
     return {
       transactions: [],
       error: `CSV must include these columns: ${HEADERS.join(", ")}.`,
+      guessed: 0,
     };
   }
 
   const dataRows = rows.slice(1);
   if (dataRows.length > MAX_IMPORT_ROWS) {
-    return { transactions: [], error: `Import up to ${MAX_IMPORT_ROWS} transactions at a time.` };
+    return { transactions: [], error: `Import up to ${MAX_IMPORT_ROWS} transactions at a time.`, guessed: 0 };
   }
 
   const transactions: CsvTransaction[] = [];
   const errors: string[] = [];
+  let guessed = 0;
 
   for (const [index, row] of dataRows.entries()) {
     const lineNumber = index + 2;
@@ -143,13 +146,10 @@ export function parseTransactionsCsv(csv: string) {
     if (kind !== "income" && kind !== "expense") {
       errors.push(`Row ${lineNumber}: type must be income or expense.`);
     }
-    if (
-      kind === "income" || kind === "expense"
-        ? !CATEGORIES[kind].includes(category)
-        : false
-    ) {
-      errors.push(`Row ${lineNumber}: "${category}" is not a valid ${kind} category.`);
-    }
+    const resolved = kind === "income" || kind === "expense"
+      ? resolveCategory(kind, category, description)
+      : null;
+    if (resolved?.guessed) guessed += 1;
     if (!/^\d+(\.\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0 || amount > 9999999999.99) {
       errors.push(`Row ${lineNumber}: enter a positive amount with up to 2 decimal places.`);
     }
@@ -163,7 +163,7 @@ export function parseTransactionsCsv(csv: string) {
     if (
       validDate(date) &&
       (kind === "income" || kind === "expense") &&
-      CATEGORIES[kind].includes(category) &&
+      resolved !== null &&
       /^\d+(\.\d{1,2})?$/.test(amountText) &&
       Number.isFinite(amount) &&
       amount > 0 &&
@@ -174,7 +174,7 @@ export function parseTransactionsCsv(csv: string) {
       transactions.push({
         transaction_date: date,
         kind,
-        category,
+        category: resolved.category,
         description,
         amount,
       });
@@ -185,8 +185,8 @@ export function parseTransactionsCsv(csv: string) {
     const visibleErrors = errors.slice(0, 10);
     const remaining = errors.length - visibleErrors.length;
     const suffix = remaining > 0 ? ` And ${remaining} more issue${remaining === 1 ? "" : "s"}.` : "";
-    return { transactions: [], error: `${visibleErrors.join(" ")}${suffix}` };
+    return { transactions: [], error: `${visibleErrors.join(" ")}${suffix}`, guessed: 0 };
   }
 
-  return { transactions, error: null };
+  return { transactions, error: null, guessed };
 }

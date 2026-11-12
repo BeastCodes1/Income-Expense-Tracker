@@ -55,7 +55,10 @@ export async function importTransactionsCsv(
   if (error) return { error: `Could not import transactions: ${error.message}` };
 
   revalidatePath("/dashboard");
-  return { success: `Imported ${parsed.transactions.length} transaction${parsed.transactions.length === 1 ? "" : "s"}.` };
+  const guessedNote = parsed.guessed > 0
+    ? ` ${parsed.guessed} row${parsed.guessed === 1 ? " was" : "s were"} filed from the description (or Other) because the category didn't match.`
+    : "";
+  return { success: `Imported ${parsed.transactions.length} transaction${parsed.transactions.length === 1 ? "" : "s"}.${guessedNote}` };
 }
 
 function safeRedirectPath(value: FormDataEntryValue | null, fallback = "/dashboard") {
@@ -166,6 +169,77 @@ export async function deleteTransaction(formData: FormData): Promise<ActionState
   if (error || !data) return { error: "Could not delete this transaction. Please try again." };
   revalidatePath("/dashboard");
   return { success: "Transaction deleted." };
+}
+
+export async function restoreTransaction(formData: FormData): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const id = String(formData.get("id") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "");
+  const amount = Number(String(formData.get("amount") ?? ""));
+  const category = String(formData.get("category") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const transaction_date = String(formData.get("transaction_date") ?? "");
+  const created_at = String(formData.get("created_at") ?? "");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return { error: "That transaction can no longer be restored." };
+  }
+  if (!["income", "expense"].includes(kind)) return { error: "Could not restore the transaction." };
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 9999999999.99) {
+    return { error: "Could not restore the transaction." };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(transaction_date)) {
+    return { error: "Could not restore the transaction." };
+  }
+
+  const { error } = await supabase.from("transactions").insert({
+    id,
+    user_id: user.id,
+    kind,
+    amount,
+    category,
+    description,
+    transaction_date,
+    ...(created_at && !Number.isNaN(Date.parse(created_at)) ? { created_at } : {}),
+  });
+
+  if (error) return { error: "Could not restore the transaction. It may already exist." };
+  revalidatePath("/dashboard");
+  return { success: "Transaction restored." };
+}
+
+export async function deleteTransactions(formData: FormData): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  let ids: unknown;
+  try {
+    ids = JSON.parse(String(formData.get("ids") ?? ""));
+  } catch {
+    return { error: "Choose the transactions to delete." };
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) return { error: "Choose at least one transaction." };
+  if (ids.length > 500) return { error: "Delete up to 500 transactions at a time." };
+
+  const valid = ids.filter(
+    (id): id is string => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id),
+  );
+  if (valid.length === 0) return { error: "Choose the transactions to delete." };
+
+  const { error } = await supabase
+    .from("transactions")
+    .delete()
+    .in("id", valid)
+    .eq("user_id", user.id);
+
+  if (error) return { error: "Could not delete the selected transactions. Please try again." };
+  revalidatePath("/dashboard");
+  return { success: `Deleted ${valid.length} transaction${valid.length === 1 ? "" : "s"}.` };
 }
 
 export async function saveRecurringTransaction(

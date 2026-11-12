@@ -6,8 +6,14 @@ A starter full-stack personal finance app using Next.js App Router, TypeScript, 
 - Email/password sign-up, sign-in, sign-out, and password reset
 - Cloud-persisted transactions
 - Income, expenses, categories, dates, notes
-- Search and month filtering
+- Search within the selected month or across your whole history
+- Complete totals and trends beyond 1,000 transactions (the history is read in pages)
 - Summary cards and recurring schedules
+- Duplicate a transaction, or quick-add one you record often
+- Undo a deletion for a few seconds, and delete several transactions at once
+- Year-to-date totals, savings rate, same-month-last-year comparison, and a per-category six-month trend
+- Installable on your phone as a PWA, with an offline fallback page
+- CSV import that files unfamiliar categories from the description instead of rejecting the row
 - Month-over-month income, expense, and net-balance comparisons
 - Six-month cash-flow chart of income versus expenses
 - Monthly budgets by expense category, progress bars, and 80% / over-budget warnings
