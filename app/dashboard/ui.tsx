@@ -57,6 +57,14 @@ const money = (amount: number) =>
     currency: "CAD",
   }).format(amount);
 
+const compactMoney = (amount: number) =>
+  new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(amount);
+
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -65,6 +73,12 @@ function today() {
 function previousMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
   const date = new Date(year, monthNumber - 2, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonth(month: string, delta: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(year, monthNumber - 1 + delta, 1);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -322,6 +336,10 @@ export function Dashboard({
       ),
     [transactions, month, query, kindFilter, categoryFilter, dateFrom, dateTo, minimumAmount, maximumAmount],
   );
+  const monthTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.transaction_date.startsWith(month)),
+    [transactions, month],
+  );
   const transactionCategories = useMemo(
     () => [...new Set(transactions.map((transaction) => transaction.category))].sort(),
     [transactions],
@@ -345,13 +363,11 @@ export function Dashboard({
     setMaximumAmount("");
   }
 
-  const income = visible
-    .filter((t) => t.kind === "income")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
-
-  const expenses = visible
-    .filter((t) => t.kind === "expense")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+  // Month totals stay independent of the transaction filters so searching the list
+  // never rewrites the summary cards, insights, or budget progress.
+  const monthTotals = totalsForMonth(transactions, month);
+  const income = monthTotals.income;
+  const expenses = monthTotals.expenses;
 
   const balance = income - expenses;
   const projectedBalance = balance + projectedRecurringTotal(recurring, month);
@@ -363,10 +379,29 @@ export function Dashboard({
         year: "numeric",
       })
     : "";
-  const currentMonthTotals = totalsForMonth(transactions, month);
+  const currentMonthTotals = monthTotals;
   const previousMonthTotals = totalsForMonth(transactions, comparisonMonth);
 
-  const expensesByCategory = visible.reduce<Record<string, number>>((totals, t) => {
+  const trend = useMemo(() => {
+    if (!validSelectedMonth) return [];
+    return Array.from({ length: 6 }, (_, index) => {
+      const trendMonth = shiftMonth(month, index - 5);
+      const totals = totalsForMonth(transactions, trendMonth);
+      return {
+        month: trendMonth,
+        income: totals.income,
+        expenses: totals.expenses,
+        net: totals.income - totals.expenses,
+      };
+    });
+  }, [transactions, month, validSelectedMonth]);
+  const trendMax = Math.max(
+    ...trend.map((entry) => Math.max(entry.income, entry.expenses)),
+    1,
+  );
+  const trendIsEmpty = trend.every((entry) => entry.income === 0 && entry.expenses === 0);
+
+  const expensesByCategory = monthTransactions.reduce<Record<string, number>>((totals, t) => {
     if (t.kind === "expense") {
       totals[t.category] = (totals[t.category] ?? 0) + Number(t.amount);
     }
@@ -394,12 +429,19 @@ export function Dashboard({
     setBusyId(id);
     const fd = new FormData();
     fd.set("id", id);
-    const result = await deleteTransaction(fd);
 
-await deleteTransaction(fd);
-
-setTransactions((old) => old.filter((t) => t.id !== id));
-    setBusyId(null);
+    try {
+      const result = await deleteTransaction(fd);
+      if (result?.error) {
+        window.alert(result.error);
+        return;
+      }
+      setTransactions((old) => old.filter((t) => t.id !== id));
+    } catch {
+      window.alert("Could not delete the transaction. Please try again.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function removeRecurring(id: string) {
@@ -536,6 +578,65 @@ setTransactions((old) => old.filter((t) => t.id !== id));
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Six-month cash flow */}
+        <section className={panelClass}>
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Six-month cash flow</h2>
+              <p className={`mt-1 text-sm ${textMuted}`}>
+                Income and expenses recorded for the six months ending {monthLabel}.
+              </p>
+            </div>
+            <div className={`flex items-center gap-3 text-xs font-semibold ${textMuted}`}>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" /> Income
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden="true" /> Expenses
+              </span>
+            </div>
+          </div>
+
+          {trendIsEmpty ? (
+            <p className={`rounded-2xl border border-dashed p-6 text-center text-sm ${dark ? "border-slate-700" : "border-slate-200"} ${textMuted}`}>
+              Record some income or expenses to see how your cash flow moves month to month.
+            </p>
+          ) : (
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-3">
+              {trend.map((entry) => {
+                const label = new Date(`${entry.month}-15T12:00:00`).toLocaleDateString("en-CA", { month: "short" });
+                const selected = entry.month === month;
+
+                return (
+                  <div
+                    key={entry.month}
+                    role="group"
+                    aria-label={`${label}: income ${money(entry.income)}, expenses ${money(entry.expenses)}, net ${money(entry.net)}`}
+                    className={`flex flex-col items-center gap-2 rounded-2xl px-1 py-2 ${selected ? (dark ? "bg-slate-800" : "bg-indigo-50/70") : ""}`}
+                  >
+                    <div className="flex h-28 w-full items-end justify-center gap-1 sm:h-32" aria-hidden="true">
+                      <div
+                        className="w-2.5 rounded-t-md bg-emerald-500 sm:w-3.5"
+                        style={{ height: `${Math.max((entry.income / trendMax) * 100, entry.income > 0 ? 3 : 0)}%` }}
+                      />
+                      <div
+                        className="w-2.5 rounded-t-md bg-rose-400 sm:w-3.5"
+                        style={{ height: `${Math.max((entry.expenses / trendMax) * 100, entry.expenses > 0 ? 3 : 0)}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-semibold ${selected ? (dark ? "text-indigo-300" : "text-indigo-600") : textMuted}`}>
+                      {label}
+                    </span>
+                    <span className={`text-[11px] font-bold ${entry.net < 0 ? "text-rose-500" : dark ? "text-emerald-300" : "text-emerald-700"}`}>
+                      {compactMoney(entry.net)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Spending insights */}
@@ -855,7 +956,9 @@ setTransactions((old) => old.filter((t) => t.id !== id));
             <div>
               <h2 className="text-lg font-bold tracking-tight">Transactions</h2>
               <p className={`mt-1 text-sm ${textMuted}`}>
-                {visible.length} record{visible.length === 1 ? "" : "s"} · {monthLabel}
+                {activeFilterCount > 0 || query.trim()
+                  ? `${visible.length} of ${monthTransactions.length} records · ${monthLabel} · filters applied`
+                  : `${visible.length} record${visible.length === 1 ? "" : "s"} · ${monthLabel}`}
               </p>
             </div>
             <div className="relative w-full sm:max-w-xs">
@@ -1413,6 +1516,21 @@ function TransactionForm({
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !pending) setClosing(true);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pending]);
 
   function close(force = false) {
     if ((!pending || force) && !closing) setClosing(true);

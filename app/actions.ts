@@ -148,14 +148,24 @@ export async function saveTransaction(_prev: ActionState, formData: FormData): P
   return { success: id ? "Transaction updated." : "Transaction saved." };
 }
 
-export async function deleteTransaction(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
+export async function deleteTransaction(formData: FormData): Promise<ActionState> {
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return { error: "Missing transaction ID." };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { error } = await supabase.from("transactions").delete().eq("id", id);
-  if (!error) revalidatePath("/dashboard");
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !data) return { error: "Could not delete this transaction. Please try again." };
+  revalidatePath("/dashboard");
+  return { success: "Transaction deleted." };
 }
 
 export async function saveRecurringTransaction(
