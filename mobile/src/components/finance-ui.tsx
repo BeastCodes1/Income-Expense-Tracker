@@ -1,4 +1,5 @@
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -35,12 +36,14 @@ export function FinanceButton({
   onPress,
   theme,
   variant = 'primary',
+  size = 'default',
   disabled = false,
 }: {
   title: string;
   onPress: () => void;
   theme: ThemeColors;
   variant?: 'primary' | 'secondary' | 'danger';
+  size?: 'default' | 'compact';
   disabled?: boolean;
 }) {
   const backgroundColor =
@@ -55,6 +58,7 @@ export function FinanceButton({
       : variant === 'danger'
         ? theme.expense
         : theme.text;
+  const compact = size === 'compact';
 
   return (
     <Pressable
@@ -63,10 +67,19 @@ export function FinanceButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        compact && styles.compactButton,
         { backgroundColor, opacity: disabled ? 0.55 : pressed ? 0.75 : 1 },
       ]}
     >
-      <Text style={[styles.buttonText, { color }]}>{title}</Text>
+      <Text
+        style={[
+          styles.buttonText,
+          compact && styles.compactButtonText,
+          { color },
+        ]}
+      >
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -79,7 +92,7 @@ export function FinanceField({
 }: TextInputProps & { label: string; theme: ThemeColors; inputStyle?: object }) {
   return (
     <View style={styles.fieldGroup}>
-      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text>
       <TextInput
         {...props}
         placeholderTextColor={theme.textMuted}
@@ -168,7 +181,7 @@ export function ScreenTitle({
 
 export const financeUiStyles = StyleSheet.create({
   body: { flex: 1 },
-  content: { padding: 20, paddingBottom: 36, gap: 16 },
+  content: { padding: 20, paddingBottom: 40, gap: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowSpace: {
     flexDirection: 'row',
@@ -176,42 +189,82 @@ export const financeUiStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  heading: { fontSize: 18, fontWeight: '800' },
+  rowActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  rowTitle: { fontSize: 15, fontWeight: '600' },
   text: { fontSize: 14, lineHeight: 20 },
   muted: { fontSize: 13, lineHeight: 19 },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: -2,
+  },
   divider: { height: StyleSheet.hairlineWidth },
   stack: { gap: 12 },
-  amount: { fontWeight: '800', fontSize: 15 },
-  empty: { textAlign: 'center', paddingVertical: 24, lineHeight: 21 },
+  amount: {
+    fontWeight: '700',
+    fontSize: 15,
+    fontVariant: ['tabular-nums'],
+  },
+  empty: { textAlign: 'center', paddingVertical: 20, lineHeight: 21 },
 });
 
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 16,
     gap: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOpacity: 0.05,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+      },
+      android: { elevation: 1 },
+      default: {
+        shadowColor: '#0F172A',
+        shadowOpacity: 0.05,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+      },
+    }),
   },
   button: {
-    minHeight: 44,
+    minHeight: 46,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 11,
   },
+  compactButton: {
+    minHeight: 34,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
   buttonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
   },
-  fieldGroup: { gap: 7 },
-  label: { fontSize: 13, fontWeight: '700' },
+  compactButtonText: { fontSize: 13, fontWeight: '600' },
+  fieldGroup: { gap: 8 },
+  label: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
   input: {
     minHeight: 48,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 13,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
   },
@@ -219,11 +272,11 @@ const styles = StyleSheet.create({
   categoryChoice: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 12,
   },
   categoryText: { fontSize: 13, fontWeight: '600' },
-  screenTitle: { gap: 4, marginBottom: 4 },
-  title: { fontSize: 28, fontWeight: '900' },
+  screenTitle: { gap: 4, marginBottom: 2 },
+  title: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, lineHeight: 20 },
 });

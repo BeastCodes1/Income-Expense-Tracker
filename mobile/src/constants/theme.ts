@@ -24,8 +24,9 @@ export type ThemeColors = {
   expense: string;
   expenseBackground: string;
   icon: string;
-  balanceLabel: string;
-  balanceFooter: string;
+  heroBackground: string;
+  heroText: string;
+  heroLabel: string;
   avatarBackground: string;
   avatarText: string;
 };
@@ -33,45 +34,47 @@ export type ThemeColors = {
 export const Colors: Record<'light' | 'dark', ThemeColors> = {
   light: {
     text: '#172033',
-    background: '#F5F7FB',
+    background: '#F6F7FB',
     backgroundElement: '#FFFFFF',
-    backgroundSelected: '#E8EEFF',
-    textSecondary: '#778198',
-    textMuted: '#8992A4',
+    backgroundSelected: '#EEF0FE',
+    textSecondary: '#788196',
+    textMuted: '#8A93A6',
     surface: '#FFFFFF',
-    surfaceAlt: '#F0F3F9',
-    border: '#E4E9F2',
-    primary: '#245BDB',
-    primarySoft: '#E8EEFF',
+    surfaceAlt: '#F1F3F8',
+    border: '#E7EAF0',
+    primary: '#4F46E5',
+    primarySoft: '#EEF0FE',
     income: '#159563',
     incomeBackground: '#E1F7EC',
     expense: '#E05252',
     expenseBackground: '#FDEAEA',
     icon: '#45516A',
-    balanceLabel: '#DCE7FF',
-    balanceFooter: '#E3EBFF',
+    heroBackground: '#4F46E5',
+    heroText: '#FFFFFF',
+    heroLabel: '#DCDDFF',
     avatarBackground: '#DDF5EA',
     avatarText: '#16845B',
   },
   dark: {
-    text: '#F3F6FC',
-    background: '#101522',
-    backgroundElement: '#1B2433',
+    text: '#F3F4F6',
+    background: '#0B1120',
+    backgroundElement: '#111827',
     backgroundSelected: '#263A63',
-    textSecondary: '#B3BED0',
-    textMuted: '#929FB3',
-    surface: '#1B2433',
-    surfaceAlt: '#222D40',
-    border: '#303B4E',
-    primary: '#779AFF',
-    primarySoft: '#263A63',
+    textSecondary: '#A1AAB9',
+    textMuted: '#8C96A8',
+    surface: '#111827',
+    surfaceAlt: '#1F2937',
+    border: '#374151',
+    primary: '#8B9DFF',
+    primarySoft: '#232E4D',
     income: '#61D6A0',
     incomeBackground: '#183B31',
     expense: '#FF8282',
     expenseBackground: '#462A31',
     icon: '#CFD7E5',
-    balanceLabel: '#E0E9FF',
-    balanceFooter: '#E0E9FF',
+    heroBackground: '#26304E',
+    heroText: '#EEF2FF',
+    heroLabel: '#B9C4E6',
     avatarBackground: '#173A32',
     avatarText: '#62D3A1',
   },

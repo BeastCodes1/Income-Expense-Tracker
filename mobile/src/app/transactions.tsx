@@ -35,6 +35,7 @@ import {
   money,
   nextMonth,
   parseTransactionsCsv,
+  readableDate,
   today,
   transactionsToCsv,
   validDate,
@@ -405,7 +406,7 @@ export default function TransactionsScreen() {
             style={ui.rowSpace}
           >
             <View>
-              <Text style={[ui.heading, { color: theme.text, fontSize: 16 }]}>
+              <Text style={[ui.heading, { color: theme.text }]}>
                 More filters
               </Text>
               <Text style={[ui.muted, { color: theme.textSecondary }]}>
@@ -537,7 +538,7 @@ export default function TransactionsScreen() {
           disabled={!userId}
         />
         <FinanceCard theme={theme}>
-          <Text style={[ui.heading, { color: theme.text, fontSize: 16 }]}>
+          <Text style={[ui.heading, { color: theme.text }]}>
             CSV tools
           </Text>
           <Text style={[ui.muted, { color: theme.textSecondary }]}>
@@ -632,13 +633,13 @@ export default function TransactionsScreen() {
               >
               <FinanceCard theme={theme}>
                 <View style={ui.rowSpace}>
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={[ui.heading, { color: theme.text }]}>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={[ui.rowTitle, { color: theme.text }]}>
                       {transaction.description || transaction.category}
                     </Text>
                     <Text style={[ui.muted, { color: theme.textSecondary }]}>
-                      {transaction.kind} · {transaction.category} ·{' '}
-                      {transaction.transaction_date}
+                      {transaction.category} ·{' '}
+                      {readableDate(transaction.transaction_date)}
                     </Text>
                   </View>
                   <Text
@@ -656,17 +657,19 @@ export default function TransactionsScreen() {
                     {money(Number(transaction.amount))}
                   </Text>
                 </View>
-                <View style={ui.row}>
+                <View style={ui.rowActions}>
                   <FinanceButton
                     title="Edit"
                     theme={theme}
                     variant="secondary"
+                    size="compact"
                     onPress={() => setEditor(transaction)}
                   />
                   <FinanceButton
                     title="Delete"
                     theme={theme}
                     variant="danger"
+                    size="compact"
                     onPress={() => deleteTransaction(transaction)}
                   />
                 </View>

@@ -311,6 +311,15 @@ export const validDate = (value: string) =>
   !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
   new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
+export const readableDate = (date: string) =>
+  validDate(date)
+    ? new Date(`${date}T12:00:00`).toLocaleDateString('en-CA', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : date;
+
 export function nextOccurrence(
   date: string,
   frequency: RecurrenceFrequency

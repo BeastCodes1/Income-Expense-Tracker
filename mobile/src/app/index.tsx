@@ -28,6 +28,7 @@ import {
   nextMonth,
   previousMonth,
   projectedRecurringTotal,
+  readableDate,
   recentMonths,
   type RecurringTransaction,
   type Transaction,
@@ -368,12 +369,15 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>YOUR MONEY, AT A GLANCE</Text>
-            <Text style={styles.heading}>My Finances</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.heading}>Overview</Text>
+            <Text style={styles.headerSubtitle}>
+              {authenticated
+                ? `${monthName} · Income and expenses in CAD`
+                : 'Track income and expenses in CAD'}
+            </Text>
           </View>
           <View style={styles.themeControl}>
-            <Text style={styles.themeLabel}>Dark mode</Text>
             <Switch
               accessibilityRole="switch"
               accessibilityLabel="Dark mode"
@@ -405,7 +409,7 @@ export default function HomeScreen() {
 
         {authenticated ? (
           <FinanceField
-            label="Dashboard month (YYYY-MM)"
+            label="Month (YYYY-MM)"
             theme={theme}
             value={month}
             onChangeText={setMonth}
@@ -569,17 +573,36 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.monthIntro}>
-              <Text style={styles.greeting}>YOUR MONEY, MADE CLEARER</Text>
-              <Text style={styles.monthTitle}>{monthName}</Text>
-            </View>
             <View style={styles.balanceCard}>
               <Text style={styles.balanceLabel}>Net balance</Text>
-              <Text style={styles.balanceAmount}>
-                {money(balance)}
-              </Text>
-              <Text style={styles.balanceFooter}>Selected month · CAD</Text>
+              <Text style={styles.balanceAmount}>{money(balance)}</Text>
             </View>
+
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Income</Text>
+                <Text style={styles.incomeAmount}>{money(income)}</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Expenses</Text>
+                <Text style={styles.expenseAmount}>{money(expenses)}</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Projected balance</Text>
+                <Text
+                  style={[
+                    styles.projectedAmount,
+                    {
+                      color:
+                        projectedBalance < 0 ? theme.expense : theme.primary,
+                    },
+                  ]}
+                >
+                  {money(projectedBalance)}
+                </Text>
+              </View>
+            </View>
+
             {recurringError ? (
               <View style={styles.messageCard}>
                 <Text style={styles.authError}>{recurringError}</Text>
@@ -587,8 +610,7 @@ export default function HomeScreen() {
             ) : null}
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Six-month trends</Text>
-              <Text style={styles.count}>Income vs expenses</Text>
+              <Text style={styles.sectionTitle}>Six-month cash flow</Text>
             </View>
             <View style={styles.chartCard}>
               <View style={styles.chartLegend}>
@@ -632,35 +654,6 @@ export default function HomeScreen() {
                   </View>
                 ))}
               </ScrollView>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Income</Text>
-                <Text style={styles.incomeAmount}>
-                  {money(income)}
-                </Text>
-              </View>
-
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Expenses</Text>
-                <Text style={styles.expenseAmount}>
-                  {money(expenses)}
-                </Text>
-              </View>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Projected balance</Text>
-                <Text
-                  style={[
-                    styles.projectedAmount,
-                    {
-                      color: projectedBalance < 0 ? theme.expense : theme.primary,
-                    },
-                  ]}
-                >
-                  {money(projectedBalance)}
-                </Text>
-              </View>
             </View>
 
             <View style={styles.comparisonCard}>
@@ -716,7 +709,6 @@ export default function HomeScreen() {
 
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Spending insights</Text>
-              <Text style={styles.count}>Top categories</Text>
             </View>
             {topCategories.length === 0 ? (
               <View style={styles.messageCard}>
@@ -764,9 +756,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                Recent Transactions
-              </Text>
+              <Text style={styles.sectionTitle}>Recent transactions</Text>
               <Text style={styles.count}>
                 {visibleTransactions.length} this month
               </Text>
@@ -788,37 +778,22 @@ export default function HomeScreen() {
 
                 return (
                   <View key={item.id} style={styles.transaction}>
-                    <View
-                      style={[
-                        styles.transactionIcon,
-                        incomeItem
-                          ? styles.incomeIcon
-                          : styles.expenseIcon,
-                      ]}
-                    >
-                      <Text style={styles.iconText}>
-                        {incomeItem ? '+' : '−'}
-                      </Text>
-                    </View>
-
                     <View style={styles.details}>
-                      <Text style={styles.transactionTitle}>
+                      <Text style={styles.transactionTitle} numberOfLines={1}>
                         {item.description?.trim() ||
                           item.category ||
                           'Transaction'}
                       </Text>
-                      <Text style={styles.category}>
+                      <Text style={styles.transactionMeta}>
                         {item.category || 'Uncategorized'} ·{' '}
-                        {item.transaction_date}
+                        {readableDate(item.transaction_date)}
                       </Text>
                     </View>
 
                     <Text
                       style={[
                         styles.amount,
-                        incomeItem
-                          ? styles.incomeAmount
-                          : styles.expenseAmount,
+                        { color: incomeItem ? theme.income : theme.expense },
                       ]}
                     >
                       {incomeItem ? '+' : '−'}
@@ -843,10 +818,6 @@ export default function HomeScreen() {
             </Text>
           </>
         )}
-
-        <Text style={styles.disclaimer}>
-          Connected to your Supabase project
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -864,31 +835,30 @@ const createStyles = (theme: ThemeColors) =>
     },
     header: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
-      marginBottom: 24,
+      gap: 12,
+      marginBottom: 20,
     },
-    greeting: {
-      color: theme.textSecondary,
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 1,
-      marginBottom: 6,
+    headerCopy: {
+      flex: 1,
+      gap: 4,
     },
     heading: {
       color: theme.text,
-      fontSize: 28,
+      fontSize: 26,
       fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      color: theme.textSecondary,
+      fontSize: 13,
+      lineHeight: 18,
     },
     themeControl: {
       alignItems: 'center',
       flexDirection: 'row',
-      gap: 8,
-    },
-    themeLabel: {
-      color: theme.textSecondary,
-      fontSize: 12,
-      fontWeight: '600',
+      paddingTop: 4,
     },
     accountRow: {
       flexDirection: 'row',
@@ -914,18 +884,13 @@ const createStyles = (theme: ThemeColors) =>
       fontWeight: '700',
       fontSize: 12,
     },
-    monthIntro: {
-      gap: 4,
-      marginTop: 4,
-      marginBottom: 4,
-    },
     chartCard: {
       backgroundColor: theme.surface,
       borderRadius: 18,
       borderWidth: 1,
       borderColor: theme.border,
       padding: 16,
-      marginBottom: 24,
+      marginBottom: 20,
     },
     comparisonCard: {
       backgroundColor: theme.surface,
@@ -933,7 +898,7 @@ const createStyles = (theme: ThemeColors) =>
       borderWidth: 1,
       borderColor: theme.border,
       padding: 16,
-      marginBottom: 30,
+      marginBottom: 20,
     },
     comparisonMetric: {
       flexDirection: 'row',
@@ -1008,80 +973,82 @@ const createStyles = (theme: ThemeColors) =>
       fontSize: 10,
       marginTop: 8,
     },
-    monthTitle: {
-      color: theme.text,
-      fontSize: 25,
-      fontWeight: '900',
-    },
     balanceCard: {
-      backgroundColor: theme.primary,
-      borderRadius: 24,
-      padding: 24,
-      marginBottom: 18,
+      backgroundColor: theme.heroBackground,
+      borderRadius: 20,
+      padding: 20,
+      marginBottom: 10,
     },
     balanceLabel: {
-      color: theme.balanceLabel,
-      fontSize: 14,
+      color: theme.heroLabel,
+      fontSize: 11,
+      fontWeight: '600',
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
     },
     balanceAmount: {
-      color: '#FFFFFF',
-      fontSize: 34,
+      color: theme.heroText,
+      fontSize: 32,
       fontWeight: '800',
-      marginTop: 12,
-      marginBottom: 16,
-    },
-    balanceFooter: {
-      color: theme.balanceFooter,
-      fontSize: 12,
+      letterSpacing: -0.8,
+      marginTop: 8,
+      fontVariant: ['tabular-nums'],
     },
     summaryRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
-      marginBottom: 30,
+      gap: 10,
+      marginBottom: 24,
     },
     summaryCard: {
       flex: 1,
       backgroundColor: theme.surface,
-      borderRadius: 18,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: theme.border,
-      padding: 16,
-      minHeight: 100,
+      padding: 14,
+      minHeight: 82,
       minWidth: '47%',
+      justifyContent: 'space-between',
+      gap: 10,
     },
     summaryLabel: {
       color: theme.textSecondary,
-      fontSize: 13,
-      marginBottom: 12,
+      fontSize: 12,
+      fontWeight: '600',
     },
     incomeAmount: {
       color: theme.income,
-      fontSize: 15,
-      fontWeight: '800',
+      fontSize: 18,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     expenseAmount: {
       color: theme.expense,
-      fontSize: 15,
-      fontWeight: '800',
+      fontSize: 18,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     projectedAmount: {
-      fontSize: 15,
-      fontWeight: '800',
+      fontSize: 18,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     sectionHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 14,
+      alignItems: 'baseline',
+      gap: 12,
+      marginBottom: 10,
     },
     sectionTitle: {
       color: theme.text,
-      fontSize: 19,
-      fontWeight: '800',
+      fontSize: 17,
+      fontWeight: '700',
+      letterSpacing: -0.2,
     },
     count: {
-      color: theme.textSecondary,
+      color: theme.textMuted,
       fontSize: 12,
     },
     insightRow: {
@@ -1089,8 +1056,8 @@ const createStyles = (theme: ThemeColors) =>
       borderColor: theme.border,
       borderWidth: 1,
       borderRadius: 14,
-      padding: 14,
-      marginBottom: 10,
+      padding: 13,
+      marginBottom: 8,
     },
     insightLabelRow: {
       flexDirection: 'row',
@@ -1140,47 +1107,37 @@ const createStyles = (theme: ThemeColors) =>
     transaction: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
       backgroundColor: theme.surface,
-      borderRadius: 16,
-      padding: 13,
-      marginBottom: 10,
-    },
-    transactionIcon: {
-      width: 42,
-      height: 42,
+      borderWidth: 1,
+      borderColor: theme.border,
       borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 11,
-    },
-    incomeIcon: {
-      backgroundColor: theme.incomeBackground,
-    },
-    expenseIcon: {
-      backgroundColor: theme.expenseBackground,
-    },
-    iconText: {
-      fontSize: 22,
-      fontWeight: '700',
-      color: theme.icon,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      marginBottom: 8,
     },
     details: {
       flex: 1,
-      marginRight: 6,
+      gap: 3,
     },
     transactionTitle: {
       color: theme.text,
-      fontSize: 13,
-      fontWeight: '700',
-      marginBottom: 5,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    transactionMeta: {
+      color: theme.textMuted,
+      fontSize: 11.5,
     },
     category: {
       color: theme.textMuted,
-      fontSize: 10,
+      fontSize: 12,
     },
     amount: {
-      fontSize: 12,
-      fontWeight: '800',
+      fontSize: 14,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     status: {
       paddingVertical: 60,
@@ -1193,9 +1150,11 @@ const createStyles = (theme: ThemeColors) =>
     },
     messageCard: {
       backgroundColor: theme.surface,
-      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 20,
       padding: 20,
-      marginBottom: 18,
+      marginBottom: 16,
     },
     errorTitle: {
       color: theme.expense,
@@ -1262,10 +1221,12 @@ const createStyles = (theme: ThemeColors) =>
     },
     refreshButton: {
       backgroundColor: theme.primarySoft,
-      padding: 15,
-      borderRadius: 14,
+      minHeight: 46,
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+      borderRadius: 12,
       alignItems: 'center',
-      marginTop: 14,
+      marginTop: 12,
     },
     refreshText: {
       color: theme.primary,

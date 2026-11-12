@@ -24,6 +24,7 @@ import {
   currentMonth,
   money,
   nextMonth,
+  readableDate,
   today,
   validDate,
   type Budget,
@@ -33,6 +34,13 @@ import {
   type RecurrenceFrequency,
 } from '@/lib/finance';
 import { supabase } from '@/lib/supabase';
+
+const frequencyLabels: Record<RecurrenceFrequency, string> = {
+  weekly: 'Weekly',
+  biweekly: 'Every two weeks',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
 
 export default function PlanningScreen() {
   const theme = useTheme();
@@ -378,29 +386,31 @@ export default function PlanningScreen() {
                       ]}
                     >
                       <View style={ui.rowSpace}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[ui.heading, { color: theme.text }]}>
+                        <View style={{ flex: 1, gap: 3 }}>
+                          <Text style={[ui.rowTitle, { color: theme.text }]}>
                             {budget.category}
                           </Text>
                           <Text style={[ui.muted, { color: theme.textSecondary }]}>
                             {money(spent)} of {money(limit)}
                           </Text>
                         </View>
-                        <View style={ui.row}>
-                          <TouchableOpacity
-                            accessibilityRole="button"
+                        <View style={ui.rowActions}>
+                          <FinanceButton
+                            title="Edit"
+                            theme={theme}
+                            variant="secondary"
+                            size="compact"
                             onPress={() =>
                               setEditor({ type: 'budget', budget })
                             }
-                          >
-                            <Text style={{ color: theme.primary }}>Edit</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            accessibilityRole="button"
+                          />
+                          <FinanceButton
+                            title="Delete"
+                            theme={theme}
+                            variant="danger"
+                            size="compact"
                             onPress={() => deleteBudget(budget)}
-                          >
-                            <Text style={{ color: theme.expense }}>Delete</Text>
-                          </TouchableOpacity>
+                          />
                         </View>
                       </View>
                       <View
@@ -486,15 +496,16 @@ export default function PlanningScreen() {
                   >
                     <View style={ui.rowSpace}>
                       <View style={{ flex: 1, gap: 3 }}>
-                        <Text style={[ui.heading, { color: theme.text }]}>
+                        <Text style={[ui.rowTitle, { color: theme.text }]}>
                           {schedule.description || schedule.category}
                         </Text>
                         <Text style={[ui.muted, { color: theme.textSecondary }]}>
-                          {schedule.kind} · {schedule.category} ·{' '}
-                          {schedule.frequency}
+                          {schedule.kind === 'income' ? 'Income' : 'Expense'} ·{' '}
+                          {schedule.category} ·{' '}
+                          {frequencyLabels[schedule.frequency]}
                         </Text>
                         <Text style={[ui.muted, { color: theme.textSecondary }]}>
-                          Next due {schedule.next_due_date}
+                          Next due {readableDate(schedule.next_due_date)}
                         </Text>
                       </View>
                       <Text
@@ -512,12 +523,15 @@ export default function PlanningScreen() {
                         {money(Number(schedule.amount))}
                       </Text>
                     </View>
-                    <FinanceButton
-                      title="Delete schedule"
-                      theme={theme}
-                      variant="danger"
-                      onPress={() => deleteSchedule(schedule)}
-                    />
+                    <View style={ui.rowActions}>
+                      <FinanceButton
+                        title="Delete"
+                        theme={theme}
+                        variant="danger"
+                        size="compact"
+                        onPress={() => deleteSchedule(schedule)}
+                      />
+                    </View>
                   </View>
                 ))
               )}
