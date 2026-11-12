@@ -17,7 +17,7 @@ export function ThemeToggle() {
         aria-pressed={isDark}
       >
         {isDark ? <Sun size={17} /> : <Moon size={17} />}
-        <span>{isDark ? "Light mode" : "Dark mode"}</span>
+        <span className="sr-only">{isDark ? "Light mode" : "Dark mode"}</span>
       </button>
     </div>
   );

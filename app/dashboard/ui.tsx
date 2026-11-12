@@ -32,12 +32,10 @@ import {
   X,
   CalendarDays,
   LoaderCircle,
-  Repeat,
   PiggyBank,
   AlertTriangle,
   CheckCircle2,
   TrendingUp,
-  Sparkles,
   Download,
   Upload,
   SlidersHorizontal,
@@ -72,6 +70,13 @@ const compactMoney = (amount: number) =>
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(amount);
+
+const formatDate = (date: string) =>
+  new Date(`${date}T12:00:00`).toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
 function today() {
   const d = new Date();
@@ -175,10 +180,10 @@ function projectedRecurringTotal(
   return total;
 }
 
-const panel = "rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-slate-300 hover:shadow-md sm:p-6";
-const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
-const primaryButton = "inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60";
-const secondaryButton = "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60";
+const panel = "rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6";
+const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100";
+const primaryButton = "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryButton = "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 disabled:opacity-60";
 
 function AnimatedPresence({
   open,
@@ -650,7 +655,7 @@ export function Dashboard({
     : "bg-slate-50 text-slate-900 [--muted:#64748b] [--panel:#ffffff] [--line:#e2e8f0]";
 
   const panelClass = dark
-    ? "rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-slate-700 hover:shadow-md sm:p-6"
+    ? "rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6"
     : panel;
 
   const textMuted = dark ? "text-slate-400" : "text-slate-500";
@@ -660,28 +665,27 @@ export function Dashboard({
 
   return (
     <div className={`dashboard-theme dashboard-page-enter ${dark ? "theme-dark" : ""} ${theme} -mx-4 min-h-screen px-4 py-6 sm:-mx-6 sm:px-6 md:py-9`}>
-      <div className="dashboard-content-enter mx-auto max-w-7xl space-y-7">
+      <div className="dashboard-content-enter mx-auto max-w-7xl space-y-6 pb-12">
 
         {/* Dashboard heading */}
         <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-indigo-100 px-3 py-1.5 text-xs font-bold text-indigo-700">
-              <Sparkles size={14} /> YOUR MONEY, MADE CLEARER
-            </div>
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Overview</h1>
-            <p className={`mt-2 ${textMuted}`}>
-              Here’s your financial picture for {monthLabel}.
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Overview</h1>
+            <p className={`mt-1.5 text-sm ${textMuted}`}>
+              Your financial picture for {monthLabel}, in CAD.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              aria-label="Choose month"
-              className={`${field} w-auto`}
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-            />
+            <div className="min-w-0 flex-1 sm:w-44 sm:flex-none">
+              <input
+                aria-label="Choose month"
+                className={field}
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+              />
+            </div>
             <button
               type="button"
               className={primaryButton}
@@ -697,7 +701,7 @@ export function Dashboard({
         </header>
 
         {/* Summary cards */}
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard title="Income" amount={income} icon={<ArrowDownLeft size={21} />} tone="green" dark={dark} />
           <SummaryCard title="Expenses" amount={expenses} icon={<ArrowUpRight size={21} />} tone="rose" dark={dark} />
           <SummaryCard title="Net balance" amount={balance} icon={<Wallet size={21} />} tone="indigo" dark={dark} />
@@ -709,7 +713,7 @@ export function Dashboard({
             <h2 className="text-lg font-bold tracking-tight">Month-over-month</h2>
             <p className={`mt-1 text-sm ${textMuted}`}>
               {comparisonMonth
-                ? `${monthLabel} compared with ${comparisonMonthLabel}. Full-month totals; transaction filters don&apos;t affect this comparison.`
+                ? `${monthLabel} compared with ${comparisonMonthLabel}. Full-month totals; transaction filters don’t affect this comparison.`
                 : "Choose a valid month to compare monthly totals."}
             </p>
           </div>
@@ -742,15 +746,17 @@ export function Dashboard({
                 className={`rounded-2xl border p-4 ${dark ? "border-slate-700 bg-slate-800/60" : "border-slate-100 bg-slate-50/70"}`}
               >
                 <p className={`text-sm font-semibold ${textMuted}`}>{item.label}</p>
-                <p className={`mt-2 text-xl font-extrabold ${item.color}`}>
+                <p className={`numeric mt-2 text-xl font-bold tracking-tight ${item.color}`}>
                   {money(item.current)}
                 </p>
                 <p className={`mt-1 text-xs ${textMuted}`}>
                   {describeMonthChange(item.current, item.previous)}
                 </p>
-                <p className={`mt-1 text-xs ${textMuted}`}>
-                  Last year: {money(item.lastYear)}
-                </p>
+                {item.lastYear !== 0 && (
+                  <p className={`mt-1 text-xs ${textMuted}`}>
+                    Same month last year: {money(item.lastYear)}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -766,7 +772,7 @@ export function Dashboard({
                 : "Choose a valid month to see year-to-date totals."}
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <MiniStat label="Income this year" value={money(ytdTotals.income)} dark={dark} />
             <MiniStat label="Expenses this year" value={money(ytdTotals.expenses)} dark={dark} />
             <MiniStat
@@ -845,16 +851,11 @@ export function Dashboard({
 
         {/* Spending insights */}
         <section className={panelClass}>
-          <div className="mb-5 flex items-start gap-3">
-            <span className="rounded-2xl bg-indigo-100 p-3 text-indigo-700">
-              <TrendingUp size={22} />
-            </span>
-            <div>
-              <h2 className="text-lg font-bold tracking-tight">Spending insights</h2>
-              <p className={`mt-1 text-sm ${textMuted}`}>
-                Where your recorded money went this month.
-              </p>
-            </div>
+          <div className="mb-5">
+            <h2 className="text-lg font-bold tracking-tight">Spending insights</h2>
+            <p className={`mt-1 text-sm ${textMuted}`}>
+              Where your recorded money went this month. Select a category for its six-month trend.
+            </p>
           </div>
 
           {topCategories.length === 0 ? (
@@ -862,7 +863,7 @@ export function Dashboard({
               Add an expense to see your spending breakdown.
             </p>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-1">
               {topCategories.map(([category, amount]) => {
                 const percent = expenses > 0 ? (amount / expenses) * 100 : 0;
                 const active = drilldown === category;
@@ -873,10 +874,17 @@ export function Dashboard({
                     type="button"
                     aria-expanded={active}
                     onClick={() => setDrilldown(active ? null : category)}
-                    className={`w-full rounded-2xl px-2 py-2 text-left transition ${active ? (dark ? "bg-slate-800" : "bg-indigo-50/80") : ""}`}
+                    className={`w-full rounded-xl px-2 py-2 text-left transition ${active ? (dark ? "bg-slate-800" : "bg-indigo-50/70") : (dark ? "hover:bg-slate-800/60" : "hover:bg-slate-50")}`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="font-semibold">{category}</span>
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        {category}
+                        <ChevronDown
+                          size={14}
+                          aria-hidden="true"
+                          className={`transition-transform ${active ? "rotate-180" : ""} ${textMuted}`}
+                        />
+                      </span>
                       <span className={textMuted}>
                         {money(amount)} · {Math.round(percent)}%
                       </span>
@@ -887,9 +895,7 @@ export function Dashboard({
                         style={{ width: `${Math.min(percent, 100)}%` }}
                       />
                     </div>
-                    <span className={`mt-2 block text-xs ${textMuted}`}>
-                      {active ? "Hide six-month trend" : "Show six-month trend"}
-                    </span>
+
                   </button>
                 );
               })}
@@ -939,14 +945,9 @@ export function Dashboard({
         {/* Budgets */}
         <section className={panelClass}>
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-                <PiggyBank size={22} />
-              </span>
-              <div>
-                <h2 className="text-lg font-bold tracking-tight">Monthly budgets</h2>
-                <p className={`mt-1 text-sm ${textMuted}`}>Plan ahead and keep spending on track.</p>
-              </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Monthly budgets</h2>
+              <p className={`mt-1 text-sm ${textMuted}`}>Plan ahead and keep spending on track.</p>
             </div>
             <button
               type="button"
@@ -1086,16 +1087,11 @@ export function Dashboard({
         {/* Recurring transactions */}
         <section className={panelClass}>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="rounded-2xl bg-violet-100 p-3 text-violet-700">
-                <Repeat size={22} />
-              </span>
-              <div>
-                <h2 className="text-lg font-bold tracking-tight">Recurring transactions</h2>
-                <p className={`mt-1 text-sm ${textMuted}`}>
-                  {recurring.length} saved schedule{recurring.length === 1 ? "" : "s"}
-                </p>
-              </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Recurring transactions</h2>
+              <p className={`mt-1 text-sm ${textMuted}`}>
+                {recurring.length} saved schedule{recurring.length === 1 ? "" : "s"}
+              </p>
             </div>
             <button
               type="button"
@@ -1141,7 +1137,7 @@ export function Dashboard({
                     </div>
                     <div className={`mt-3 flex justify-between gap-3 border-t pt-3 text-sm ${dark ? "border-slate-800" : "border-slate-100"}`}>
                       <span className="capitalize">{t.frequency}</span>
-                      <span className={textMuted}>Next: {t.next_due_date}</span>
+                      <span className={textMuted}>Next: {formatDate(t.next_due_date)}</span>
                     </div>
                     <div className="mt-3 flex justify-end">
                       <button
@@ -1165,7 +1161,7 @@ export function Dashboard({
                       <th className="pb-3 pr-4 font-medium">Frequency</th>
                       <th className="pb-3 pr-4 font-medium">Next due</th>
                       <th className="pb-3 pr-4 text-right font-medium">Amount</th>
-                      <th className="pb-3 text-right font-medium">Action</th>
+                      <th className="pb-3 text-right font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1176,7 +1172,7 @@ export function Dashboard({
                           <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind} · {t.category}</p>
                         </td>
                         <td className="py-4 pr-4 capitalize">{t.frequency}</td>
-                        <td className={`py-4 pr-4 ${textMuted}`}>{t.next_due_date}</td>
+                        <td className={`py-4 pr-4 ${textMuted}`}>{formatDate(t.next_due_date)}</td>
                         <td className={`py-4 pr-4 text-right font-bold whitespace-nowrap ${t.kind === "income" ? "text-emerald-500" : ""}`}>
                           {t.kind === "income" ? "+" : "−"}{money(Number(t.amount))}
                         </td>
@@ -1254,7 +1250,7 @@ export function Dashboard({
 
           {quickAdds.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className={`text-xs font-semibold uppercase tracking-wide ${textMuted}`}>Quick add</span>
+              <span className={`text-[11px] font-semibold uppercase tracking-wider ${textMuted}`}>Quick add</span>
               {quickAdds.map((entry) => (
                 <button
                   key={`${entry.kind}-${entry.category}-${entry.amount}-${entry.description}`}
@@ -1443,7 +1439,7 @@ export function Dashboard({
                 className={`${primaryButton} mt-4`}
                 onClick={() => {
                   setDuplicateMode(false);
-                setEditing(null);
+                  setEditing(null);
                   setShowTransactionForm(true);
                 }}
               >
@@ -1467,9 +1463,6 @@ export function Dashboard({
                         onChange={() => toggleSelected(t.id)}
                       />
                       <div className="flex min-w-0 items-start gap-3">
-                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${t.kind === "income" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                          {t.kind === "income" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}
-                        </span>
                         <div className="min-w-0">
                           <p className="break-words font-semibold">{t.description || t.category}</p>
                           <p className={`mt-1 text-xs capitalize ${textMuted}`}>{t.kind}</p>
@@ -1694,15 +1687,14 @@ function SummaryCard({
   };
 
   return (
-    <div className={`rounded-3xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200/80 bg-white"}`}>
+    <div className={`rounded-2xl border p-5 ${dark ? "border-slate-800 bg-slate-900" : "border-slate-200/70 bg-white"}`}>
       <div className="flex items-center justify-between gap-3">
         <p className={`text-sm font-medium ${dark ? "text-slate-400" : "text-slate-500"}`}>{title}</p>
-        <span className={`rounded-2xl p-3 ${colors[tone]}`}>{icon}</span>
+        <span className={`rounded-xl p-2.5 ${colors[tone]}`}>{icon}</span>
       </div>
-      <p className={`mt-5 break-words text-2xl font-black tracking-tight sm:text-3xl ${amount < 0 ? "text-rose-500" : ""}`}>
+      <p className={`numeric mt-4 break-words text-2xl font-bold tracking-tight ${amount < 0 ? "text-rose-500" : ""}`}>
         {money(amount)}
       </p>
-      <p className={`mt-2 text-xs ${dark ? "text-slate-500" : "text-slate-400"}`}>Selected month · CAD</p>
     </div>
   );
 }
@@ -1719,9 +1711,9 @@ function MiniStat({
   valueClass?: string;
 }) {
   return (
-    <div className={`rounded-2xl p-4 ${dark ? "bg-slate-800" : "bg-slate-50"}`}>
+    <div className={`rounded-xl p-4 ${dark ? "bg-slate-800" : "bg-slate-50"}`}>
       <p className={`text-xs ${dark ? "text-slate-400" : "text-slate-500"}`}>{label}</p>
-      <p className={`mt-2 break-words text-xl font-bold ${valueClass}`}>{value}</p>
+      <p className={`numeric mt-2 break-words text-xl font-bold tracking-tight ${valueClass}`}>{value}</p>
     </div>
   );
 }
